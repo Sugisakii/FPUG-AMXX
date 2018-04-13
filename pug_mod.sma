@@ -187,7 +187,7 @@ public plugin_init()
 	pug_register_command(".forceready", "pfn_forceready", g_PluginId)
 	pug_register_command(".cancel", "pfn_force_cancel", g_PluginId)
 	pug_register_command(".dmg", "cmd_dmg", g_PluginId)
-	pug_register_command(".vidas", "cmds_vidas", g_PluginId)
+	pug_register_command(".hp", "cmds_vidas", g_PluginId)
 
 	set_task(5.0, "start_pregame")
 	read_maps()
