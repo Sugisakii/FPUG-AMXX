@@ -1329,6 +1329,7 @@ fn_forceready()
 		if(ready_count == get_pcvar_num(pcvar_max_players))
 		{
 			start_vote()
+			break;
 		}
 	}
 }
