@@ -126,7 +126,7 @@ new PugStartCmds[][CMDS] =
 	{"mp_forcerespawn", "0"},
 	{"mp_startmoney", "800"},
 	{"mp_freezetime", "0"},
-	{"sv_alltalk", "0"},
+	{"sv_alltalk", "2"},
 	{"mp_refill_bpammo_weapons", "0"},
 	{"mp_buytime", ".25"},
 	{"mp_forcechasecam", "2"},
