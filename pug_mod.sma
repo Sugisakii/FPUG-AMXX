@@ -8,6 +8,8 @@
 #define VERSION "1.21"
 #define AUTHOR  "Sugisaki"
 
+#define MAXPLAYERS 15
+
 #define END_ROUND_KNIFE_FIX
 
 #if AMXX_VERSION_NUM >= 183
@@ -40,7 +42,7 @@ new Trie:t_Command_Plugin
 new pug_state
 new g_PluginId
 new iMaxPlayers
-new bool:ready[33]
+new bool:ready[MAXPLAYERS]
 new ready_count
 new HamHook:SpawnWeapon
 new HamHook:DefuseKit
@@ -61,15 +63,15 @@ new Sync3
 new Sync4
 new pcvar_max_players
 
-new g_iDmg[33][33]
-new g_iHits[33][33]
+new g_iDmg[MAXPLAYERS][MAXPLAYERS]
+new g_iHits[MAXPLAYERS][MAXPLAYERS]
 
 new Array:g_maps
 new g_votes[32]
 new g_iRound_team[2]
 new g_iRounds
-new g_iFrags[33]
-new g_iDeaths[33]
+new g_iFrags[MAXPLAYERS]
+new g_iDeaths[MAXPLAYERS]
 
 new g_vote_count
 
