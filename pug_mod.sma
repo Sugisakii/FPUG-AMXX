@@ -243,11 +243,11 @@ read_ini()
 
 public client_connect(id)
 {
-	static _steam_id[32]
-	
 	if(private)
 	{
+		new _steam_id[32]
 		get_user_authid(id, _steam_id, charsmax(_steam_id))
+		
 		if(!TrieKeyExists(g_private, _steam_id))
 		{
 			server_cmd("kick #%i 'Servidor Privado!!!'", get_user_userid(id))
@@ -267,7 +267,7 @@ public pfn_money(id)
 	{
 		return 
 	}
-	set_member(id, m_iAccount, 25000)
+	set_member(id, m_iAccount, 16000)
 }
 
 public pfn_PlayerDeath()
@@ -307,10 +307,11 @@ public cmds_vidas(id)
 	new name[32]
 	for(new i = 1 ; i <= iMaxPlayers ; i++)
 	{
-		if(team == get_team(i))
-			continue
-		get_user_name(i, name, 32)
-		client_print(id, print_chat, "%s %i", name, get_user_health(i))
+		if(is_user_connected(i) && (1 <= get_team(i) <= 2) && team != get_team(i) && is_user_alive(i))
+		{
+			get_user_name(i, name, 32)
+			client_print(id, print_chat, "%s | %s | HP: %i", TAG, name, get_user_health(i))
+		}
 	}
 }
 public pfn_EVENT_damage(id)
@@ -322,7 +323,7 @@ public pfn_EVENT_damage(id)
 	{
 		return
 	}
-
+	
 	g_iDmg[id][a] += damage
 	g_iHits[id][a] += 1
 }
@@ -333,19 +334,21 @@ public cmd_dmg(id)
 		client_print(id, print_chat, "%s Accion no permitida en este momento", TAG)
 		return
 	}
-	new tmp_name[32], count
-	for(new i = 0 ; i < iMaxPlayers ; i++) // tecnicamente esto esta bien pero se acostumbra siempre i=1 y i<=iMaxPlayers
+	new tmp_name[32], count, hit, conn, dmg
+	for(new i = 1 ; i <= iMaxPlayers ; i++)
 	{
-		if(g_iHits[i][id] > 0)
+		hit = g_iHits[i][id]
+		if(hit)
 		{
-			if(!is_user_connected(i))
-			{
-				continue;
-			}
+			count++
+			dmg = g_iDmg[i][id]
+			conn = is_user_connected(i)
 			get_user_name(i, tmp_name, charsmax(tmp_name))
 			
-			client_print(id, print_chat, "%s | %s | Dmg: %i | Hits: %i ", TAG, tmp_name, g_iDmg[i][id], g_iHits[i][id])
-			count++
+			if(i == id)
+				client_print(id, print_chat, "%s | Tu mismo | Dmg: %i | Hits: %i", TAG, g_iDmg[i][id], g_iHits[i][id])
+			else
+				client_print(id, print_chat, "%s | %s | Dmg: %i | Hits: %i%s", TAG, tmp_name, g_iDmg[i][id], g_iHits[i][id], conn ? "" : " | Jugador desconectado")
 		}
 	}
 	if(!count)
@@ -369,7 +372,6 @@ public newRound(id)
 }
 public pfn_Round_End_Hook(WinStatus:status, ScenarioEventEndRound:event, Float:tmDelay)
 {
-	
 	if(pug_state == NO_ALIVE || event == ROUND_GAME_RESTART)
 	{
 		return HC_CONTINUE
