@@ -9,8 +9,8 @@
 #define AUTHOR  "Sugisaki"
 
 #define MAXPLAYERS 15
-
 #define END_ROUND_KNIFE_FIX
+#define get_team(%0) get_member(%0, m_iTeam)
 
 #if AMXX_VERSION_NUM >= 183
 	#define client_disconnect client_disconnected
@@ -120,7 +120,8 @@ new Pregame_Cmds[][CMDS] =
 	{"mp_forcecamera", "0"},
 	{"mp_roundtime", "0"},
 	{"allow_spectators", "1"},
-	{"sv_timeout", "20"}
+	{"sv_timeout", "20"},
+	{"sv_maxspeed", "320"}
 }
 
 new PugStartCmds[][CMDS] = 
@@ -302,11 +303,11 @@ public pfn_ScoreInfo(m, s, id)
 
 public cmds_vidas(id)
 {
-	new team = get_user_team(id)
+	new team = get_team(id)
 	new name[32]
 	for(new i = 1 ; i <= iMaxPlayers ; i++)
 	{
-		if(team == get_user_team(i))
+		if(team == get_team(i))
 			continue
 		get_user_name(i, name, 32)
 		client_print(id, print_chat, "%s %i", name, get_user_health(i))
@@ -333,7 +334,7 @@ public cmd_dmg(id)
 		return
 	}
 	new tmp_name[32], count
-	for(new i = 0 ; i < iMaxPlayers ; i++)
+	for(new i = 0 ; i < iMaxPlayers ; i++) // tecnicamente esto esta bien pero se acostumbra siempre i=1 y i<=iMaxPlayers
 	{
 		if(g_iHits[i][id] > 0)
 		{
@@ -384,7 +385,7 @@ public pfn_Round_End_Hook(WinStatus:status, ScenarioEventEndRound:event, Float:t
 		{
 			for(new i = 1 ; i <= iMaxPlayers ; i++)
 			{
-				if(!is_user_connected(i) || !(1 <= get_user_team(i) <= 2))
+				if(!is_user_connected(i) || !(1 <= get_team(i) <= 2))
 				{
 					continue;
 				}
@@ -407,7 +408,7 @@ public pfn_Round_End_Hook(WinStatus:status, ScenarioEventEndRound:event, Float:t
 		DisableHamForward(PlayerSpawn)
 		SetHookChainReturn(ATYPE_INTEGER, 1)
 		Send_TextMsg(status == WINSTATUS_TERRORISTS ? "#Terrorists_Win" : status == WINSTATUS_CTS ? "#CTs_Win" : "")
-		server_cmd("sv_restart 4")
+		set_cvar_num("sv_restart", 4)
 
 		DisableHamForward(SpawnWeapon)
 		unregister_message(gMsgStatusIcon, gMsgRegisterStatusIcon)
@@ -439,6 +440,7 @@ public pfn_Round_End_Hook(WinStatus:status, ScenarioEventEndRound:event, Float:t
 		EnableHamForward(PlayerPostink)
 		g_vote_countdown = 15
 		set_task(1.0, "pfn_intermission_count", TASK_HUD_READY, _, _, "b")
+		set_cvar_num("sv_maxspeed", 0)
 		is_intermission = true
 		half_time = true
 		rg_send_audio(0, status == WINSTATUS_TERRORISTS ? "%!MRAD_terwin" : status == WINSTATUS_CTS ? "%!MRAD_ctwin" : "%!MRAD_rounddraw", PITCH_NORM)
@@ -453,6 +455,7 @@ public pfn_Round_End_Hook(WinStatus:status, ScenarioEventEndRound:event, Float:t
 		EnableHamForward(PlayerPostink)
 		g_vote_countdown = 15
 		set_task(1.0, "pfn_pug_end_countdown", TASK_PUG_END, _, _, "b")
+		set_cvar_num("sv_maxspeed", 0)
 		is_intermission = true
 		Send_TextMsg(status == WINSTATUS_TERRORISTS ? "#Terrorists_Win" : status == WINSTATUS_CTS ? "#CTs_Win" : "")
 		rg_send_audio(0, status == WINSTATUS_TERRORISTS ? "%!MRAD_terwin" : status == WINSTATUS_CTS ? "%!MRAD_ctwin" : "%!MRAD_rounddraw", PITCH_NORM)
@@ -518,14 +521,15 @@ public pfn_intermission_count(task)
 		client_cmd(0, "wait;^"cd^" ^"fadeout^";wait")
 		remove_task(task)
 		DisableHamForward(PlayerPostink)
-		server_cmd("sv_restart 1")
+		set_cvar_num("sv_maxspeed", 320)
+		set_cvar_num("sv_restart", 1)
 		new temp = g_iRound_team[CT]
 		g_iRound_team[CT] = g_iRound_team[TT]
 		g_iRound_team[TT] = temp
 		is_intermission = false
 		for(new i = 1 ; i<= iMaxPlayers ;i++)
 		{
-			if(!is_user_connected(i) || !(1<= get_user_team(i) <= 2))
+			if(!is_user_connected(i) || !(1<= get_team(i) <= 2))
 			{
 				continue
 			}
@@ -613,8 +617,8 @@ public ev_new_round()
 	if(g_iRounds == 1)
 	{
 		set_cvar_num(Pregame_Cmds[1][COMMAND], 0)
-		arrayset(g_iFrags, 0, sizeof(g_iFrags))
-		arrayset(g_iDeaths, 0, sizeof(g_iDeaths))
+		arrayset(g_iFrags, 0, MAXPLAYERS)
+		arrayset(g_iDeaths, 0, MAXPLAYERS)
 	}
 	#endif
 
@@ -637,8 +641,8 @@ public ev_new_round()
 	new i
 	for(i = 0 ; i < iMaxPlayers ; i++)
 	{
-		arrayset(g_iDmg[i], 0, sizeof(g_iDmg))
-		arrayset(g_iHits[i], 0, sizeof(g_iHits))
+		arrayset(g_iDmg[i], 0, MAXPLAYERS)
+		arrayset(g_iHits[i], 0, MAXPLAYERS)
 	}
 }
 
@@ -697,11 +701,10 @@ bool:check_bsp_file(file[])
 }
 public pfn_postink(id)
 {
-	if(!(1 <= get_user_team(id) <= 2))
+	if(!(1 <= get_team(id) <= 2))
 	{
 		return
 	}
-	set_pev(id, pev_maxspeed, 0.1)
 	if(pug_state == ALIVE)
 	{
 		client_cmd(id, "+showscores")
@@ -721,15 +724,15 @@ public pfn_remove_entity(id)
 }
 reset_user_vars()
 {
-	arrayset(ready, false, sizeof(ready))
+	arrayset(ready, false, MAXPLAYERS)
 	ready_count = 0
 	g_vote_id = 0;
 	round_knife = false
 	half_time = false
 	g_iRound_team[TT] = 0
 	g_iRound_team[CT] = 0
-	arrayset(g_iFrags, 0, sizeof(g_iFrags))
-	arrayset(g_iDeaths, 0, sizeof(g_iDeaths))
+	arrayset(g_iFrags, 0, MAXPLAYERS)
+	arrayset(g_iDeaths, 0, MAXPLAYERS)
 }
 stock pug_register_command(Command[], Function[], Plugin)
 {
@@ -761,7 +764,7 @@ public start_pregame()
 	is_intermission = false
 	pug_state = NO_ALIVE
 	gMsgRegisterStatusIcon = register_message(gMsgStatusIcon, "pfn_StatusIcon")
-	server_cmd("sv_restart 1")
+	set_cvar_num("sv_restart", 1)
 	EnableHamForward(SpawnWeapon)
 	EnableHamForward(DefuseKit)
 	reset_user_vars()
@@ -804,7 +807,7 @@ public pfn_Hud_Ready()
 	new __pcount = 0
 	for(i = 1 ; i <= iMaxPlayers ;i++ )
 	{
-		if(!is_user_connected(i) || !(1 <= get_user_team(i) <= 2))
+		if(!is_user_connected(i) || !(1 <= get_team(i) <= 2))
 		{
 			continue;
 		}
@@ -816,7 +819,7 @@ public pfn_Hud_Ready()
 	copy(fmt, charsmax(fmt), "")
 	for(i = 1 ; i <= iMaxPlayers ;i++ )
 	{
-		if(ready[i] || !is_user_connected(i) || !(1 <= get_user_team(i) <= 2))
+		if(ready[i] || !is_user_connected(i) || !(1 <= get_team(i) <= 2))
 		{
 			continue;
 		}
@@ -830,7 +833,7 @@ public pfn_Hud_Ready()
 	ShowSyncHudMsg(0, Sync3, "Listos: %i", ready_count)
 	for(i = 1 ; i <= iMaxPlayers ;i++ )
 	{
-		if(!ready[i] || !is_user_connected(i) || !(1 <= get_user_team(i) <= 2))
+		if(!ready[i] || !is_user_connected(i) || !(1 <= get_team(i) <= 2))
 		{
 			continue;
 		}
@@ -881,7 +884,7 @@ public pfn_Hook_Say(id)
 
 public pfn_ready(id)
 {
-	if(pug_state != NO_ALIVE || !(1 <= get_user_team(id) <= 2))
+	if(pug_state != NO_ALIVE || !(1 <= get_team(id) <= 2))
 	{
 		client_print(id, print_chat, "%s Accion no permitida en este momento", TAG)
 		return
@@ -921,7 +924,7 @@ public pfn_unready(id)
 }
 public pfn_TextMsg(m, e, id)
 {
-	new msg[23]
+	static msg[23]
 	get_msg_arg_string(2, msg, charsmax(msg))
 	if(equal(msg, "#Game_will_restart_in"))
 	{
@@ -948,7 +951,7 @@ public pfn_Hook_ChooseTeam(id, _:slot)
 		}
 		return HC_CONTINUE
 	}
-	else if((1 <= slot <= 2) && (1 <= get_user_team(id) <= 2) && pug_state == ALIVE)
+	else if((1 <= slot <= 2) && (1 <= get_team(id) <= 2) && pug_state == ALIVE)
 	{
 		client_print(id, print_chat, "%s No puedes hacer un cambio de equipos estando una partida en curso", TAG)
 		SetHookChainReturn(ATYPE_INTEGER, 0)
@@ -1022,7 +1025,7 @@ public pfn_set_team(id)
 			rg_join_team(id, TEAM_SPECTATOR)
 			return
 		}
-		if(get_user_team(id) == _c_team)
+		if(get_team(id) == _c_team)
 		{
 			return
 		}
@@ -1041,14 +1044,14 @@ public client_disconnect(id)
 		ready[id] = false
 		ready_count--
 	}
-	new team = get_user_team(id)
+	new team = get_team(id)
 	if(pug_state == ALIVE && (1 <= team <= 2))
 	{
 		new count = 0
 		
 		for(new i = 1 ; i <= iMaxPlayers ;i++)
 		{
-			if(!is_user_connected(i) || i == id || get_user_team(i) != team)
+			if(!is_user_connected(i) || i == id || get_team(i) != team)
 			{
 				continue
 			}
@@ -1134,6 +1137,7 @@ public next_vote()
 public start_countdown()
 {
 	EnableHamForward(PlayerPostink)
+	set_cvar_num("sv_maxspeed", 0)
 	g_vote_countdown = 4
 	set_task(1.0, "pfn_starting_game", TASK_HUD_READY, _, _, "b")
 	pfn_starting_game(TASK_HUD_READY)
@@ -1143,15 +1147,15 @@ public start_countdown()
 
 public start_pug()
 {
-	server_cmd("sv_restart 1")
+	set_cvar_num("sv_restart", 1)
 	for(new i = 0 ; i < sizeof(PugStartCmds) ;i++)
 	{
 		set_cvar_string(PugStartCmds[i][COMMAND], PugStartCmds[i][VALUE])
 	}
 	g_iRounds = 0;
 	arrayset(g_iRound_team, 0, 2)
-	arrayset(g_iFrags, 0, sizeof(g_iFrags))
-	arrayset(g_iDeaths, 0, sizeof(g_iDeaths))
+	arrayset(g_iFrags, 0, MAXPLAYERS)
+	arrayset(g_iDeaths, 0, MAXPLAYERS)
 	is_intermission = false
 	DisableHamForward(DefuseKit)
 }
@@ -1172,7 +1176,6 @@ fn_update_vote_map_hud()
 	new temp
 	for(new i = 0 ; i < ArraySize(g_maps) ; i++)
 	{
-		
 		temp = g_votes[i]
 		if(temp >= 1)
 		{
@@ -1210,7 +1213,7 @@ make_menu_votemap()
 
 	for(i = 1 ; i <= iMaxPlayers ;i++ )
 	{
-		if(!is_user_connected(i) || !( 1 <= get_user_team(i) <= 2))
+		if(!is_user_connected(i) || !( 1 <= get_team(i) <= 2))
 		{
 			continue 
 		}
@@ -1221,7 +1224,7 @@ public mh_vote_map(id, menu, item)
 {
 	if(!vote_map)
 	{
-		return 
+		return
 	}
 	if(item == MENU_EXIT)
 	{
@@ -1322,7 +1325,7 @@ fn_forceready()
 {
 	for(new i = 1 ; i<= iMaxPlayers ; i++)
 	{
-		if(!is_user_connected(i) || !(1<= get_user_team(i) <= 2) || ready[i])
+		if(!is_user_connected(i) || !(1<= get_team(i) <= 2) || ready[i])
 		{
 			continue
 		}
@@ -1340,7 +1343,7 @@ public pfn_waiting_players(task)
 	new pcount = 0
 	for(new i = 1 ; i <= iMaxPlayers ; i++)
 	{
-		if(!is_user_connected(i) || !(1 <= get_user_team(i) <= 2))
+		if(!is_user_connected(i) || !(1 <= get_team(i) <= 2))
 		{
 			continue;
 		}
@@ -1395,6 +1398,7 @@ public pfn_starting_game(task)
 	else
 	{
 		DisableHamForward(PlayerPostink)
+		set_cvar_num("sv_maxspeed", 320)
 		remove_task(task)
 		center_print(0, " ");
 		client_print(0, print_chat, "%s Ronda cuchillo, el equipo ganador sera TT", TAG)
