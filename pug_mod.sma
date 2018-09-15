@@ -214,7 +214,7 @@ read_ini()
 	{
 		server_print("Servidor Privado!!!!!")
 		private = true
-		new fh = fopen(_sz_file, "r")
+		new fh = fopen(_sz_file, "rt")
 		new line[34]
 		new _auth[32]
 		new _sz_team[3]
@@ -223,7 +223,7 @@ read_ini()
 		{
 			fgets(fh, line, charsmax(line))
 			trim(line)
-			if(!line[0] || line[0] == ';')
+			if(!line[0] || line[0] == ';' || line[0] == '/')
 			{
 				continue;
 			}
@@ -345,10 +345,7 @@ public cmd_dmg(id)
 			conn = is_user_connected(i)
 			get_user_name(i, tmp_name, charsmax(tmp_name))
 			
-			if(i == id)
-				client_print(id, print_chat, "%s | Tu mismo | Dmg: %i | Hits: %i", TAG, g_iDmg[i][id], g_iHits[i][id])
-			else
-				client_print(id, print_chat, "%s | %s | Dmg: %i | Hits: %i%s", TAG, tmp_name, g_iDmg[i][id], g_iHits[i][id], conn ? "" : " | Jugador desconectado")
+			client_print(id, print_chat, "%s | %s | Dmg: %i | Hits: %i%s", TAG, tmp_name, dmg, hit, conn ? "" : " | Jugador desconectado")
 		}
 	}
 	if(!count)
@@ -640,8 +637,8 @@ public ev_new_round()
 
 	fn_update_server_name(0)
 	fn_score(0)
-	new i
-	for(i = 0 ; i < iMaxPlayers ; i++)
+	
+	for(new i = 1 ; i <= iMaxPlayers ; i++)
 	{
 		arrayset(g_iDmg[i], 0, MAXPLAYERS)
 		arrayset(g_iHits[i], 0, MAXPLAYERS)
@@ -703,11 +700,7 @@ bool:check_bsp_file(file[])
 }
 public pfn_postink(id)
 {
-	if(!(1 <= get_team(id) <= 2))
-	{
-		return
-	}
-	if(pug_state == ALIVE)
+	if((1 <= get_team(id) <= 2) && pug_state == ALIVE)
 	{
 		client_cmd(id, "+showscores")
 	}
@@ -722,7 +715,7 @@ public pfn_remove_entity(id)
 	{
 		engfunc(EngFunc_RemoveEntity, id)
 	}
-	client_print(0, print_chat, "Think")
+	//client_print(0, print_chat, "Think")
 }
 reset_user_vars()
 {
@@ -804,7 +797,7 @@ public pfn_StatusIcon(m, e, id)
 }
 public pfn_Hud_Ready()
 {
-	set_hudmessage(255, 0, 0, 0.8, 0.07, 0, 1.0, 1.1)
+	set_hudmessage(255, 0, 0, 0.8, 0.07, 0, 1.0, 1.0)
 	new i;
 	new __pcount = 0
 	for(i = 1 ; i <= iMaxPlayers ;i++ )
@@ -818,7 +811,6 @@ public pfn_Hud_Ready()
 	ShowSyncHudMsg(0, Sync1, "No Listos: %i", __pcount - ready_count)
 	new fmt[33 * 33], name[32]
 	
-	copy(fmt, charsmax(fmt), "")
 	for(i = 1 ; i <= iMaxPlayers ;i++ )
 	{
 		if(ready[i] || !is_user_connected(i) || !(1 <= get_team(i) <= 2))
@@ -828,10 +820,10 @@ public pfn_Hud_Ready()
 		get_user_name(i, name, charsmax(name))
 		format(fmt, charsmax(fmt), "%s%s^n", fmt, name)
 	}
-	set_hudmessage(255, 255, 255, 0.8, 0.1, 0, 1.0, 1.1)
+	set_hudmessage(255, 255, 255, 0.8, 0.1, 0, 1.0, 1.0)
 	ShowSyncHudMsg(0, Sync2, fmt)
 	copy(fmt, charsmax(fmt), "")
-	set_hudmessage(0, 255, 0, 0.8, 0.5, 0, 1.0, 1.1)
+	set_hudmessage(0, 255, 0, 0.8, 0.5, 0, 1.0, 1.0)
 	ShowSyncHudMsg(0, Sync3, "Listos: %i", ready_count)
 	for(i = 1 ; i <= iMaxPlayers ;i++ )
 	{
@@ -842,7 +834,7 @@ public pfn_Hud_Ready()
 		get_user_name(i, name, charsmax(name))
 		format(fmt, charsmax(fmt), "%s%s^n", fmt, name)
 	}
-	set_hudmessage(255, 255, 255, 0.8, 0.53, 0, 1.0, 1.1)
+	set_hudmessage(255, 255, 255, 0.8, 0.53, 0, 1.0, 1.0)
 	ShowSyncHudMsg(0, Sync4, fmt)
 }
 public plugin_natives()
@@ -867,7 +859,7 @@ public pfn_Hook_Say(id)
 	{
 		return PLUGIN_CONTINUE
 	}
-	new said[32]
+	static said[32]
 	read_argv(1, said, charsmax(said))
 	remove_quotes(said)
 	trim(said)
@@ -1013,26 +1005,29 @@ public pfn_set_team(id)
 	id -= 666
 	if(!is_user_connected(id))
 		return
-	static _c_team, _sz__steam_id_put[32]
+	new _sz__steam_id_put[32]
 	get_user_authid(id, _sz__steam_id_put, charsmax(_sz__steam_id_put))
 	if(TrieKeyExists(g_private, _sz__steam_id_put))
 	{
+		new _c_team
 		TrieGetCell(g_private, _sz__steam_id_put, _c_team)
-		if(!(1<= _c_team <= 3))
-		{
-			return
-		}
-		if(_c_team == 3)
-		{
-			rg_join_team(id, TEAM_SPECTATOR)
-			return
-		}
+		
 		if(get_team(id) == _c_team)
 		{
 			return
 		}
-		rg_set_user_team(id, _c_team == 1 ? TEAM_TERRORIST : TEAM_CT)
-		ExecuteHam(Ham_CS_RoundRespawn, id)
+		
+		switch(_c_team)
+		{
+			case 1: rg_set_user_team(id, TEAM_TERRORIST)
+			case 2: rg_set_user_team(id, TEAM_CT)
+			case 3: rg_join_team(id, TEAM_SPECTATOR)
+		}
+		
+		if(1 <= _c_team <= 2)
+		{
+			ExecuteHam(Ham_CS_RoundRespawn, id)
+		}
 	}
 }
 public client_disconnect(id)
@@ -1325,7 +1320,8 @@ public pfn_forceready(id)
 }
 fn_forceready()
 {
-	for(new i = 1 ; i<= iMaxPlayers ; i++)
+	new catch_players = get_pcvar_num(pcvar_max_players)
+	for(new i = 1 ; i <= iMaxPlayers ; i++)
 	{
 		if(!is_user_connected(i) || !(1<= get_team(i) <= 2) || ready[i])
 		{
@@ -1333,7 +1329,7 @@ fn_forceready()
 		}
 		ready[i] = true;
 		ready_count++
-		if(ready_count == get_pcvar_num(pcvar_max_players))
+		if(ready_count == catch_players)
 		{
 			start_vote()
 			break;
@@ -1351,7 +1347,7 @@ public pfn_waiting_players(task)
 		}
 		pcount++
 	}
-	if(g_vote_countdown -- > 0)
+	if(g_vote_countdown-- > 0)
 	{
 		
 		if(pcount == get_pcvar_num(pcvar_max_players))
@@ -1392,7 +1388,7 @@ public pfn_starting_game(task)
 		EnableHamForward(PlayerSpawn)
 	}
 
-	if(g_vote_countdown -- > 0)
+	if(g_vote_countdown-- > 0)
 	{
 		center_print(0, "Empezando Partida: %i^n^n^n^n", g_vote_countdown)
 
