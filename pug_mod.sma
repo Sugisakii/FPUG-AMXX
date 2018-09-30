@@ -27,7 +27,8 @@ enum _:PUGSTATE
 {
 	NO_ALIVE = 0,
 	ALIVE,
-	COMMENCING
+	COMMENCING,
+	VOTEMAP
 }
 
 enum _:PUG_ROUND
@@ -1114,6 +1115,7 @@ public next_vote()
 				set_task(1.0, "pfn_hud_votemap", TASK_HUD_VOTE, _, _, "b")
 				set_task(15.0, "pfn_vote_map_end", TASK_END_VOTE)
 				g_vote_countdown = 15
+				pug_state = VOTEMAP
 				start_vote_map()
 			}
 			else
