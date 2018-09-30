@@ -214,7 +214,7 @@ read_ini()
 	{
 		server_print("Servidor Privado!!!!!")
 		private = true
-		new fh = fopen(_sz_file, "rt")
+		new fh = fopen(_sz_file, "r")
 		new line[34]
 		new _auth[32]
 		new _sz_team[3]
@@ -276,6 +276,7 @@ public pfn_PlayerDeath()
 	{
 		new v = read_data(2)
 		new k = read_data(1)
+		
 		if(!(1<= k <= iMaxPlayers) || v == k)
 		{
 			g_iDeaths[v]++
@@ -478,8 +479,7 @@ stock Send_TextMsg(msg[])
 
 public pfn_pug_end_countdown(task)
 {
-	g_vote_countdown--
-	if(g_vote_countdown > 0)
+	if(--g_vote_countdown > 0)
 	{
 		if(g_iRound_team[CT] == g_iRound_team[TT])
 		{
@@ -508,8 +508,7 @@ public pfn_pug_end_countdown(task)
 
 public pfn_intermission_count(task)
 {
-	g_vote_countdown--
-	if(g_vote_countdown > 0)
+	if(--g_vote_countdown > 0)
 	{
 		make_hud_title("Descanso:")
 		make_hud_body("Cambio de Equipos en 00:%02i", g_vote_countdown)
@@ -540,7 +539,7 @@ public pfn_intermission_count(task)
 }
 fn_update_server_name(id)
 {
-	new szFmt[128]
+	new szFmt[32]
 	if(round_knife)
 	{
 		formatex(szFmt, charsmax(szFmt), "Ronda de cuchillos")
@@ -802,11 +801,10 @@ public pfn_Hud_Ready()
 	new __pcount = 0
 	for(i = 1 ; i <= iMaxPlayers ;i++ )
 	{
-		if(!is_user_connected(i) || !(1 <= get_team(i) <= 2))
+		if(is_user_connected(i) && 1 <= get_team(i) <= 2)
 		{
-			continue;
+			__pcount++
 		}
-		__pcount += 1
 	}
 	ShowSyncHudMsg(0, Sync1, "No Listos: %i", __pcount - ready_count)
 	new fmt[33 * 33], name[32]
@@ -1180,7 +1178,7 @@ fn_update_vote_map_hud()
 			format(hud, charsmax(hud), "%s%a: %i %s^n", hud, ArrayGetStringHandle(g_maps, i), temp, temp > 1 ? "votos" : "voto")
 		}	
 	}
-
+	
 	if(!count)
 	{
 		formatex(hud, charsmax(hud), "No hay votos")
@@ -1192,11 +1190,10 @@ public start_vote_map()
 	vote_map = true
 	g_vote_count = 0
 	make_menu_votemap()
-	
-
 }
 make_menu_votemap()
 {
+	arrayset(g_votes, 0, sizeof(g_votes))
 	g_VoteMenu = menu_create("\rVotacion de Mapa", "mh_vote_map")
 	new map[32]
 	new i
@@ -1204,7 +1201,6 @@ make_menu_votemap()
 	{
 		ArrayGetString(g_maps, i, map, charsmax(map))
 		menu_additem(g_VoteMenu, map)
-		arrayset(g_votes, 0, sizeof(g_votes))
 	}
 	menu_setprop(g_VoteMenu, MPROP_EXIT, MEXIT_ALL)
 
@@ -1341,11 +1337,10 @@ public pfn_waiting_players(task)
 	new pcount = 0
 	for(new i = 1 ; i <= iMaxPlayers ; i++)
 	{
-		if(!is_user_connected(i) || !(1 <= get_team(i) <= 2))
+		if(is_user_connected(i) && 1 <= get_team(i) <= 2)
 		{
-			continue;
+			pcount++
 		}
-		pcount++
 	}
 	if(g_vote_countdown-- > 0)
 	{
