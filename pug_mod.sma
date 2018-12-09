@@ -5,7 +5,7 @@
 #include <celltrie>
 
 #define PLUGIN  "PUG MOD"
-#define VERSION "1.21"
+#define VERSION "1.31"
 #define AUTHOR  "Sugisaki"
 
 #define MAXPLAYERS 15
