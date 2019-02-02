@@ -1,112 +1,77 @@
 #include <amxmodx>
-#include <hamsandwich>
-#include <fakemeta>
 #include <reapi>
-#include <celltrie>
 
-#define PLUGIN  "PUG MOD"
-#define VERSION "1.31"
+#define PLUGIN  "Pug Mod"
+#define VERSION "2.0"
 #define AUTHOR  "Sugisaki"
 
-#define MAXPLAYERS 15
-#define END_ROUND_KNIFE_FIX
-#define get_team(%0) get_member(%0, m_iTeam)
+#define SND_COUNTER_BEEP "UI/buttonrollover.wav"
+#define SND_STINGER = "pug/cs_stinger.wav"
 
-#if AMXX_VERSION_NUM >= 183
-	#define client_disconnect client_disconnected
-#endif
+#define TASK_READY	451
+#define TASK_VOTE 	452
+#define TASK_INTERMISSION 453
 
-new TASK_HUD_READY = 552214
-new TASK_HUD_VOTE = 996541
-new TASK_END_VOTE = 441017
-new TASK_PUG_END = 778745
+#define task_remove(%0) if(task_exists(%0)) { remove_task(%0); }
 
-new const TAG[] = "[Pug Mod]"
+#define SetReadyBit(%1)      (g_bReady |= (1<<(%1&31)))
+#define ClearReadyBit(%1)    (g_bReady &= ~(1 <<(%1&31)))
+#define IsReadyBit(%1)    (g_bReady & (1<<(%1&31)))
+#define CleanBit(%1) %1 = 0
 
-enum _:PUGSTATE
+new Array:g_maps
+new Trie:g_commands
+new Trie:g_votes
+new HookChain:PreThink
+new HookChain:g_MakeBomber
+new bool:is_intermission = false
+new bool:overtime = false
+new WinStatus:g_tPugWin
+new Array:g_aRegisterVotes = Invalid_Array
+
+enum _:REGISTER_VOTES
 {
-	NO_ALIVE = 0,
-	ALIVE,
-	COMMENCING,
-	VOTEMAP
+	FUNC,
+	VOTENAME[32],
+	Array:OPTIONS,
+	PLID
 }
 
-enum _:PUG_ROUND
-{
-	TT = 0,
-	CT
-}
-
-
-new Trie:t_Command
-new Trie:t_Command_Plugin
-new pug_state
-new g_PluginId
-new iMaxPlayers
-new bool:ready[MAXPLAYERS]
-new ready_count
-new HamHook:SpawnWeapon
-new HamHook:DefuseKit
-new HamHook:PlayerPostink
-new HamHook:PlayerSpawn
-new bool:vote_map
-new g_vote_id
-new g_pcvar_votemap
-new g_vote_countdown
-new bool:private
-new Trie:g_private
-new bool:round_knife
-new bool:half_time
+new g_iMapType
+new g_iLegacyChat
+new g_iMaxPlayers
+new g_pPlayers
+new g_iReadyCount
+new g_iHalfRoundNum
+new g_pVoteCount
+new g_pVoteMap
+new g_pMaxSpeed
+new g_pIntermissionCountdown
+new g_pMaxRounds
+new g_pOverTime
+new g_pOverTimeMaxRounds
+new g_menu
+new g_iCountDown
+new g_pOverTimeMoney
+new g_pOverTimeIntermissionCD
+new g_iCurrentVote = 0
 
 new Sync1
 new Sync2
 new Sync3
 new Sync4
-new pcvar_max_players
-
-new g_iDmg[MAXPLAYERS][MAXPLAYERS]
-new g_iHits[MAXPLAYERS][MAXPLAYERS]
-
-new Array:g_maps
-new g_votes[32]
-new g_iRound_team[2]
-new g_iRounds
-new g_iFrags[MAXPLAYERS]
-new g_iDeaths[MAXPLAYERS]
-
-new g_vote_count
-
-new g_VoteMenu
-
-new gMsgStatusIcon
-new gMsgRegisterStatusIcon
-
-new gMsgServerName
-new gMsgTextMsg
-new gMsgScoreInfo
-new gMsgTeamScore
-
-new bool:is_intermission
-
-new SND_MUSIC[][] =
+new g_bReady
+enum _:CVARS
 {
-	"sound/pug/music1.mp3"
-}
-new SND_COUNTER_BEEP[] = "sound/UI/buttonrollover.wav"
-new SND_STINGER[] = "sound/pug/cs_stinger.wav"
-
-enum _:CMDS
-{
-	COMMAND[32],
+	NAME[40],
 	VALUE[10]
 }
-
-new Pregame_Cmds[][CMDS] =
+new cvar_warmup[][CVARS] = 
 {
+	{"sv_allowspectators", "1"},
 	{"mp_forcerespawn", "1"},
-	{"mp_round_infinite", "acdefg"},
 	{"mp_auto_reload_weapons", "1"},
-	{"mp_auto_join_team", "1"},
+	{"mp_auto_join_team", "0"},
 	{"mp_autoteambalance", "0"},
 	{"mp_limitteams", "0"},
 	{"mp_freezetime", "0"},
@@ -120,1291 +85,1133 @@ new Pregame_Cmds[][CMDS] =
 	{"mp_forcechasecam", "0"},
 	{"mp_forcecamera", "0"},
 	{"mp_roundtime", "0"},
-	{"allow_spectators", "1"},
+	{"mp_friendlyfire", "0"},
 	{"sv_timeout", "20"},
-	{"sv_maxspeed", "320"}
+	{"mp_roundrespawn_time", "0"},
+	{"mp_item_staytime", "0"},
+	{"mp_respawn_immunitytime", "5"},
+	{"sv_rehlds_stringcmdrate_burst_punish", "-1"},
+	{"sv_rehlds_stringcmdrate_avg_punish ", "-1"},
+	{"sv_rehlds_movecmdrate_burst_punish", "-1"},
+	{"sv_rehlds_movecmdrate_avg_punish", "-1"},
+	{"sv_maxspeed", "320"},
+	{"mp_round_infinite", "acdefg"},
+	{"sv_rehlds_force_dlmax", "1"}
 }
-
-new PugStartCmds[][CMDS] = 
+new cvar_pug[][CVARS] = 
 {
+	{"mp_round_infinite", "0"},
 	{"mp_forcerespawn", "0"},
 	{"mp_startmoney", "800"},
-	{"mp_freezetime", "0"},
-	{"sv_alltalk", "2"},
+	{"mp_limitteams", "0"},
 	{"mp_refill_bpammo_weapons", "0"},
-	{"mp_buytime", ".25"},
+	{"mp_buytime", "0.25"},
+	{"sv_maxspeed", "320"},
 	{"mp_forcechasecam", "2"},
 	{"mp_forcecamera", "2"},
-	{"mp_freezetime", "11"},
+	{"mp_freezetime", "15"},
 	{"mp_roundtime", "1.75"},
-	{"mp_auto_join_team", "0"}
+	{"mp_auto_join_team", "0"},
+	{"mp_roundrespawn_time", "10"},
+	{"mp_item_staytime", "300"},
+	{"mp_respawn_immunitytime", "0"}
 }
 
+native PugRegisterCommand(name[], fwd[]);
+enum PUG_STATE
+{
+	NO_ALIVE = 0,
+	VOTING,
+	COMMENCING,
+	ALIVE,
+	ENDING
+}
+new PUG_STATE:pug_state = NO_ALIVE
 public plugin_init()
 {
-	g_PluginId = register_plugin(PLUGIN, VERSION, AUTHOR)
-	pug_state = NO_ALIVE
-	register_clcmd("say", "pfn_Hook_Say")
-	register_clcmd("say_team", "pfn_Hook_Say")
-	SpawnWeapon = RegisterHam(Ham_Spawn, "weaponbox", "pfn_remove_weapon", 1)
-	PlayerPostink = RegisterHam(Ham_Player_PostThink, "player", "pfn_postink", 1)
-	PlayerSpawn = RegisterHam(Ham_Spawn, "player", "pfn_player_spawn", 1)
-	DisableHamForward(PlayerSpawn)
-	DisableHamForward(PlayerPostink)
-	DefuseKit = RegisterHam(Ham_Spawn, "item_thighpack", "pfn_remove_weapon", 1)
-	register_event("Money", "pfn_money", "b")
-	g_private = TrieCreate()
-	g_pcvar_votemap = register_cvar("pug_votemap", "1")
-	t_Command = TrieCreate()
-	t_Command_Plugin = TrieCreate()
-	g_maps = ArrayCreate(32)
-	iMaxPlayers = get_maxplayers();
+	register_plugin(PLUGIN, VERSION, AUTHOR)
+
+	DisableHookChain((PreThink = RegisterHookChain(RG_CBasePlayer_PreThink, "OnPlayerThink", 1)))
+	DisableHookChain((g_MakeBomber = RegisterHookChain(RG_CBasePlayer_MakeBomber, "OnMakeBomber", 0)))
+	RegisterHookChain(RG_CSGameRules_RestartRound, "OnStartRound", 0)
+	RegisterHookChain(RG_CSGameRules_RestartRound, "OnStartRoundPost", 1)
+	RegisterHookChain(RG_RoundEnd, "OnRoundEndPre", 0)
+	RegisterHookChain(RG_HandleMenu_ChooseTeam, "OnChooseTeam")
+
+	RegisterCvars()
+	LoadMaps()
+
+	PugRegisterCommand("listo", "OnSetReady")
+	PugRegisterCommand("ready", "OnSetReady")
+	PugRegisterCommand("unready", "OnUnReady")
+	PugRegisterCommand("nolisto", "OnUnReady")
+}
+public plugin_natives()
+{
+	register_native("PugRegisterCommand", "_register_command")
+	register_native("PugRegisterVote", "_register_vote")
+	register_native("PugRegisterVoteOption", "_register_vote_option")
+	register_native("PugNextVote", "NextVote")
+}
+public plugin_precache()
+{
+	precache_sound(SND_COUNTER_BEEP)
+}
+public _register_vote(pl, pr)
+{
+	new name[32], fwd[32]
+	get_string(1, name, charsmax(name))
+	get_string(2, fwd, charsmax(fwd))
+	trim(name)
+	trim(fwd)
+	if(!name[0] || !fwd[0])
+	{
+		new pluginname[32]
+		get_plugin(pl, pluginname, charsmax(pluginname))
+		log_amx("[%s] No se pudo registrar una votacion [%s]", PLUGIN, pluginname)
+		return;
+	}
+	if(get_func_id(fwd, pl) == -1)
+	{
+		new pluginname[32]
+		get_plugin(pl, pluginname, charsmax(pluginname))
+		log_amx("[%s] Funcion %s no existe [%s]", PLUGIN, fwd, pluginname)
+		return
+	}
+	if(g_aRegisterVotes == Invalid_Array)
+	{
+		g_aRegisterVotes = ArrayCreate(REGISTER_VOTES)
+	}
+	new array[REGISTER_VOTES]
+	array[FUNC] = CreateOneForward(pl, fwd, FP_CELL);
+	array[OPTIONS] = Invalid_Array
+	copy(array[VOTENAME], charsmax(array[VOTENAME]), name)
+	ArrayPushArray(g_aRegisterVotes, array)
+}
+public _register_vote_option(pl, pr)
+{
+	new option[32], array[REGISTER_VOTES]
+	if(!ArraySize(g_aRegisterVotes))
+	{
+		log_amx("[%s] No hay votaciones registradas", PLUGIN)
+		return
+	}
+	get_string(1, option, charsmax(option))
+	trim(option)
+	if(!option[0])
+	{
+		log_amx("[%s] Opcion vacia", PLUGIN)
+		return;
+	}
+	new id = ArraySize(g_aRegisterVotes) - 1
+	ArrayGetArray(g_aRegisterVotes, id, array)
+	if(array[OPTIONS] == Invalid_Array)
+	{
+		array[OPTIONS] = ArrayCreate(32)
+	}
+	ArrayPushString(array[OPTIONS], option)
+	ArraySetArray(g_aRegisterVotes, id, array)
+}
+public _register_command(pl, pr)
+{
+	new name[32], fwd[32]
+	get_string(1, name, charsmax(name))
+	get_string(2, fwd, charsmax(fwd))
+	trim(name)
+	trim(fwd)
+	if(!name[0] || !fwd[0])
+	{
+		return;
+	}
+	format(name, charsmax(name), ".%s", name)
+	if(get_pcvar_num(g_iLegacyChat))
+	{
+		register_clcmd(fmt("say %s", name), fwd)
+	}
+	else
+	{
+		if(!g_commands)
+		{
+			g_commands = TrieCreate()
+		}
+		if(TrieKeyExists(g_commands, name))
+		{
+			log_amx("[%s] Comando %s ya existe", PLUGIN, name)
+			return;
+		}
+		TrieSetCell(g_commands, name, CreateOneForward(pl, fwd, FP_CELL))
+	}
+}
+public OnConfigsExecuted()
+{
+	StartPregame()
+}
+RegisterCvars()
+{
+	g_iMaxPlayers					=		get_maxplayers()
+	g_iMapType						=		register_cvar("pug_maptype", "1")
+	g_iLegacyChat					=		register_cvar("pug_legacychat", "0")
+	g_pPlayers						=		register_cvar("pug_players", "10")
+	g_pVoteCount					=		register_cvar("pug_vote_countdown", "15")
+	g_pVoteMap						=		register_cvar("pug_vote_map", "1")
+	g_pMaxRounds					=		register_cvar("pug_maxrounds", "30")
+	g_pMaxRounds					=		register_cvar("pug_maxrounds", "30")
+	g_pOverTime						=		register_cvar("pug_overtime", "0")
+	g_pOverTimeMaxRounds			=		register_cvar("pug_overtime_rounds", "6")
+	g_pIntermissionCountdown		=		register_cvar("pug_intermission_countdown", "15")
+	g_pOverTimeIntermissionCD		=		register_cvar("pug_overtime_intermission_cd", "10")
+	g_pMaxSpeed						=		get_cvar_pointer("sv_maxspeed");
+	g_pOverTimeMoney				=		register_cvar("pug_overtime_money", "10000")
+
 	Sync1 = CreateHudSyncObj()
 	Sync2 = CreateHudSyncObj()
 	Sync3 = CreateHudSyncObj()
 	Sync4 = CreateHudSyncObj()
-	gMsgStatusIcon = get_user_msgid("StatusIcon")
-	gMsgServerName = get_user_msgid("ServerName")
-	gMsgTextMsg = get_user_msgid("TextMsg")
-	gMsgScoreInfo = get_user_msgid("ScoreInfo")
-	gMsgTeamScore = get_user_msgid("TeamScore")
 
-	register_message(gMsgTeamScore, "pfn_TeamScore")
-	
-	pcvar_max_players = register_cvar("pug_players", "10")
-	
-	register_event("HLTV", "ev_new_round", "a", "1=0", "2=0")
-
-	RegisterHookChain(RG_RoundEnd, "pfn_Round_End_Hook")
-	RegisterHookChain(RG_HandleMenu_ChooseTeam, "pfn_Hook_ChooseTeam")
-
-	register_event("Damage", "pfn_EVENT_damage", "b")
-
-	register_message(gMsgTextMsg, "pfn_TextMsg")
-	register_message(gMsgScoreInfo, "pfn_ScoreInfo")
-	register_event("DeathMsg", "pfn_PlayerDeath", "a")
-
-	pug_register_command(".ready", "pfn_ready", g_PluginId)
-	pug_register_command(".unready", "pfn_unready", g_PluginId)
-	pug_register_command(".score", "pfn_score", g_PluginId)
-	pug_register_command(".start", "pfn_force_start_pug", g_PluginId)
-	pug_register_command(".forceready", "pfn_forceready", g_PluginId)
-	pug_register_command(".cancel", "pfn_force_cancel", g_PluginId)
-	pug_register_command(".dmg", "cmd_dmg", g_PluginId)
-	pug_register_command(".hp", "cmds_vidas", g_PluginId)
-
-	set_task(5.0, "start_pregame")
-	read_maps()
-	read_ini()
-}
-
-public pfn_player_spawn(id)
-{
-	if(round_knife)
+	if(!get_pcvar_num(g_iLegacyChat))
 	{
-		rg_remove_all_items(id)
-		rg_give_item(id, "weapon_knife")
-		set_member(id, m_iAccount, 1)
+		register_clcmd("say", "OnSay")
+		register_clcmd("say_team", "OnSay")
 	}
 }
-
-read_ini()
+LoadMaps()
 {
-	new _sz_file[] = "addons/amxmodx/configs/pug_private.ini"
-	if(file_exists(_sz_file))
+	new currentmap[32]
+	get_mapname(currentmap, charsmax(currentmap))
+	if(!g_maps)
 	{
-		server_print("Servidor Privado!!!!!")
-		private = true
-		new fh = fopen(_sz_file, "r")
-		new line[34]
-		new _auth[32]
-		new _sz_team[3]
-
-		while(!feof(fh))
+		g_maps = ArrayCreate(32)
+		ArrayPushString(g_maps, "Mantener Este Mapa")
+	}
+	if(get_pcvar_num(g_iMapType) > 0)
+	{
+		new fh;
+		switch(get_pcvar_num(g_iMapType))
 		{
-			fgets(fh, line, charsmax(line))
-			trim(line)
-			if(!line[0] || line[0] == ';' || line[0] == '/')
+			case 1 :
 			{
-				continue;
+				new configsdir[128]
+				get_localinfo("amxx_configsdir", configsdir, charsmax(configsdir))
+				add(configsdir, charsmax(configsdir), "/maps.ini");
+				fh = fopen(configsdir, "r")
 			}
-			parse(line, _auth, charsmax(_auth), _sz_team, charsmax(_sz_team))
-			trim(_sz_team)
-			trim(_auth)
-			TrieSetCell(g_private, _auth, str_to_num(_sz_team))
+			case 2: fh = fopen("mapcycle.txt", "r")
 		}
-		fclose(fh)
-	}
-	else
-	{
-		private = false
-		server_print("Servidor Publico!!!!!")
-	}
-}
-
-public client_connect(id)
-{
-	if(private)
-	{
-		new _steam_id[32]
-		get_user_authid(id, _steam_id, charsmax(_steam_id))
-		
-		if(!TrieKeyExists(g_private, _steam_id))
+		if(!fh)
 		{
-			server_cmd("kick #%i 'Servidor Privado!!!'", get_user_userid(id))
+			set_pcvar_num(g_iMapType, 0);
+			server_print("[%s] No se pudo abrir el archivo de mapas. Leyendo el directorio de mapas", PLUGIN)
+			LoadMaps();
 			return
 		}
-	}
-}
-
-public pfn_money(id)
-{
-	if(round_knife)
-	{
-		set_member(id, m_iAccount, 1)
-		return
-	}
-	if(pug_state == ALIVE)
-	{
-		return 
-	}
-	set_member(id, m_iAccount, 16000)
-}
-
-public pfn_PlayerDeath()
-{
-	if(pug_state == ALIVE && !is_intermission && !round_knife )
-	{
-		new v = read_data(2)
-		new k = read_data(1)
-		
-		if(!(1<= k <= iMaxPlayers) || v == k)
+		new Line[32]
+		while(!feof(fh))
 		{
-			g_iDeaths[v]++
-			g_iFrags[v]--
-		}
-		else
-		{
-			g_iFrags[k]++
-			g_iDeaths[v]++
-		}
-	}
-
-}
-
-public pfn_ScoreInfo(m, s, id)
-{
-	static _score_player_id
-	_score_player_id = get_msg_arg_int(1)
-	if(pug_state == ALIVE && !round_knife)
-	{
-		set_msg_arg_int(2, ARG_SHORT, g_iFrags[_score_player_id])
-		set_msg_arg_int(3, ARG_SHORT, g_iDeaths[_score_player_id])
-	}
-}
-
-public cmds_vidas(id)
-{
-	new team = get_team(id)
-	new name[32]
-	for(new i = 1 ; i <= iMaxPlayers ; i++)
-	{
-		if(is_user_connected(i) && (1 <= get_team(i) <= 2) && team != get_team(i) && is_user_alive(i))
-		{
-			get_user_name(i, name, 32)
-			client_print(id, print_chat, "%s | %s | HP: %i", TAG, name, get_user_health(i))
-		}
-	}
-}
-public pfn_EVENT_damage(id)
-{
-	new a = get_user_attacker(id)
-	new damage = read_data(2)
-
-	if(pug_state != ALIVE || !is_user_alive(a) || !(1 <= a <= iMaxPlayers) || a == id || damage <= 0)
-	{
-		return
-	}
-	
-	g_iDmg[id][a] += damage
-	g_iHits[id][a] += 1
-}
-public cmd_dmg(id)
-{
-	if(pug_state != ALIVE || is_user_alive(id))
-	{
-		client_print(id, print_chat, "%s Accion no permitida en este momento", TAG)
-		return
-	}
-	new tmp_name[32], count, hit, conn, dmg
-	for(new i = 1 ; i <= iMaxPlayers ; i++)
-	{
-		hit = g_iHits[i][id]
-		if(hit)
-		{
-			count++
-			dmg = g_iDmg[i][id]
-			conn = is_user_connected(i)
-			get_user_name(i, tmp_name, charsmax(tmp_name))
-			
-			client_print(id, print_chat, "%s | %s | Dmg: %i | Hits: %i%s", TAG, tmp_name, dmg, hit, conn ? "" : " | Jugador desconectado")
-		}
-	}
-	if(!count)
-	{
-		client_print(id, print_chat, "%s No Le diste a nadie en esta ronda", TAG)
-	}
-}
-public pfn_TeamScore(m, e, id)
-{
-	static _____team_score[2]
-	get_msg_arg_string(1, _____team_score, charsmax(_____team_score))
-	switch(_____team_score[0])
-	{
-		case 'T' : set_msg_arg_int(2, ARG_SHORT, g_iRound_team[TT])
-		case 'C' : set_msg_arg_int(2, ARG_SHORT, g_iRound_team[CT])
-	}
-}
-public newRound(id)
-{
-	fn_update_server_name(id)
-}
-public pfn_Round_End_Hook(WinStatus:status, ScenarioEventEndRound:event, Float:tmDelay)
-{
-	if(pug_state == NO_ALIVE || event == ROUND_GAME_RESTART)
-	{
-		return HC_CONTINUE
-	}
-	else if(is_intermission)
-	{
-		SetHookChainReturn(ATYPE_INTEGER, 1)
-		return HC_SUPERCEDE
-	}
-	if(round_knife)
-	{
-		if(status == WINSTATUS_CTS)
-		{
-			for(new i = 1 ; i <= iMaxPlayers ; i++)
-			{
-				if(!is_user_connected(i) || !(1 <= get_team(i) <= 2))
-				{
-					continue;
-				}
-				rg_switch_team(i)
-			}
-			client_print(0, print_chat, "%s Han ganado los CTs, Se realizara un cambio de equipos", TAG)
-		}
-		else if(status == WINSTATUS_TERRORISTS)
-		{
-			client_print(0, print_chat, "%s Han ganado los TTs, No realizara cambio de equipos", TAG)
-		}
-		else
-		{
-			client_print(0, print_chat, "%s Nadie Gano!, No realizara cambio de equipos", TAG)
-		}
-		round_knife = false
-		#if defined END_ROUND_KNIFE_FIX
-		set_cvar_num(Pregame_Cmds[1][COMMAND], 1)
-		#endif
-		DisableHamForward(PlayerSpawn)
-		SetHookChainReturn(ATYPE_INTEGER, 1)
-		Send_TextMsg(status == WINSTATUS_TERRORISTS ? "#Terrorists_Win" : status == WINSTATUS_CTS ? "#CTs_Win" : "")
-		set_cvar_num("sv_restart", 4)
-
-		DisableHamForward(SpawnWeapon)
-		unregister_message(gMsgStatusIcon, gMsgRegisterStatusIcon)
-		rg_send_audio(0, status == WINSTATUS_TERRORISTS ? "%!MRAD_terwin" : status == WINSTATUS_CTS ? "%!MRAD_ctwin" : "%!MRAD_rounddraw", PITCH_NORM)
-		return HC_SUPERCEDE
-	}
-	
-	if(status == WINSTATUS_CTS)
-	{
-		g_iRound_team[CT]++
-		emessage_begin(MSG_ALL, gMsgTeamScore)
-		ewrite_string("CT")
-		ewrite_short(g_iRound_team[CT])
-		emessage_end()
-	}
-	else if(status == WINSTATUS_TERRORISTS)
-	{
-		g_iRound_team[TT]++
-		emessage_begin(MSG_ALL, gMsgTeamScore)
-		ewrite_string("TERRORIST")
-		ewrite_short(g_iRound_team[TT])
-		emessage_end()
-	}
-
-	fn_update_server_name(0)
-
-	if(g_iRounds == 15 && !half_time)
-	{
-		EnableHamForward(PlayerPostink)
-		g_vote_countdown = 15
-		set_task(1.0, "pfn_intermission_count", TASK_HUD_READY, _, _, "b")
-		set_cvar_num("sv_maxspeed", 0)
-		is_intermission = true
-		half_time = true
-		rg_send_audio(0, status == WINSTATUS_TERRORISTS ? "%!MRAD_terwin" : status == WINSTATUS_CTS ? "%!MRAD_ctwin" : "%!MRAD_rounddraw", PITCH_NORM)
-		Send_TextMsg(status == WINSTATUS_TERRORISTS ? "#Terrorists_Win" : status == WINSTATUS_CTS ? "#CTs_Win" : "")
-		client_cmd(0, "mp3 play ^"%s^"", SND_MUSIC[random_num(0, charsmax(SND_MUSIC))])
-		client_cmd(0, "wait;^"mp3fadeTime^" ^"0.5^";wait")
-		SetHookChainReturn(ATYPE_INTEGER, 1)
-		return HC_SUPERCEDE
-	}
-	else if(g_iRounds == 30 || g_iRound_team[CT] >= 16 || g_iRound_team[TT] >= 16)
-	{
-		EnableHamForward(PlayerPostink)
-		g_vote_countdown = 15
-		set_task(1.0, "pfn_pug_end_countdown", TASK_PUG_END, _, _, "b")
-		set_cvar_num("sv_maxspeed", 0)
-		is_intermission = true
-		Send_TextMsg(status == WINSTATUS_TERRORISTS ? "#Terrorists_Win" : status == WINSTATUS_CTS ? "#CTs_Win" : "")
-		rg_send_audio(0, status == WINSTATUS_TERRORISTS ? "%!MRAD_terwin" : status == WINSTATUS_CTS ? "%!MRAD_ctwin" : "%!MRAD_rounddraw", PITCH_NORM)
-		client_cmd(0, "mp3 play ^"%s^"", SND_MUSIC[random_num(0, charsmax(SND_MUSIC))])
-		client_cmd(0, "wait;^"mp3fadeTime^" ^"0.5^";wait")
-		SetHookChainReturn(ATYPE_INTEGER, 1)
-		return HC_SUPERCEDE
-	}
-
-	return HC_CONTINUE
-
-}
-
-stock Send_TextMsg(msg[])
-{
-	message_begin(MSG_BROADCAST, gMsgTextMsg)
-	write_byte(4)
-	write_string(msg)
-	message_end()
-}
-
-public pfn_pug_end_countdown(task)
-{
-	if(--g_vote_countdown > 0)
-	{
-		if(g_iRound_team[CT] == g_iRound_team[TT])
-		{
-			make_hud_title("La partida quedo empatada")
-		}
-		else if(g_iRound_team[CT] >= g_iRound_team[TT])
-		{
-			make_hud_title("Los Anti-Terroristas Han ganado la partida")
-		}
-		else
-		{
-			make_hud_title("Los Terroristas Han ganado la partida")
-		}
-		make_hud_body("Reiniciando en: %i", g_vote_countdown)
-	}
-	else
-	{
-		DisableHamForward(PlayerPostink)
-		remove_task(task)
-		start_pregame()
-		client_cmd(0, "-showscores")
-		client_cmd(0, "wait;^"mp3fadeTime^" ^"0.5^";wait")
-		client_cmd(0, "wait;^"cd^" ^"fadeout^";wait")
-	}
-}
-
-public pfn_intermission_count(task)
-{
-	if(--g_vote_countdown > 0)
-	{
-		make_hud_title("Descanso:")
-		make_hud_body("Cambio de Equipos en 00:%02i", g_vote_countdown)
-	}
-	else
-	{
-		client_cmd(0, "wait;^"mp3fadeTime^" ^"0.5^";wait")
-		client_cmd(0, "wait;^"cd^" ^"fadeout^";wait")
-		remove_task(task)
-		DisableHamForward(PlayerPostink)
-		set_cvar_num("sv_maxspeed", 320)
-		set_cvar_num("sv_restart", 1)
-		new temp = g_iRound_team[CT]
-		g_iRound_team[CT] = g_iRound_team[TT]
-		g_iRound_team[TT] = temp
-		is_intermission = false
-		for(new i = 1 ; i<= iMaxPlayers ;i++)
-		{
-			if(!is_user_connected(i) || !(1<= get_team(i) <= 2))
-			{
-				continue
-			}
-			rg_switch_team(i)
-		}
-		
-		client_cmd(0, "-showscores")
-	}
-}
-fn_update_server_name(id)
-{
-	new szFmt[32]
-	if(round_knife)
-	{
-		formatex(szFmt, charsmax(szFmt), "Ronda de cuchillos")
-	}
-	else if(pug_state != NO_ALIVE)
-	{
-		formatex(szFmt, charsmax(szFmt), "Ronda: %i | CT: %i | TT: %i", g_iRounds, g_iRound_team[CT], g_iRound_team[TT])
-	}
-	else
-	{
-		formatex(szFmt, charsmax(szFmt), "PUG NO ALIVE")
-	}
-	if(id)
-	{
-		message_begin(MSG_ONE, gMsgServerName, {0, 0, 0}, id)
-	}
-	else
-	{
-		message_begin(MSG_BROADCAST, gMsgServerName)
-	}
-	write_string(szFmt)
-	message_end();
-	if(pug_state != NO_ALIVE)
-	{
-
-		if(round_knife)
-		{
-			formatex(szFmt, charsmax(szFmt), "Ronda de cuchillos")
-		}
-		else if(g_iRound_team[CT] == g_iRound_team[TT])
-		{
-			formatex(szFmt, charsmax(szFmt), "Ronda: %i | TT: %i | CT: %i", g_iRounds, g_iRound_team[CT], g_iRound_team[TT])
-		}
-		else if(g_iRound_team[CT] > g_iRound_team[TT])
-		{
-			formatex(szFmt, charsmax(szFmt), "Ronda: %i | CT: %i | TT: %i", g_iRounds, g_iRound_team[CT], g_iRound_team[TT])
-		}
-		else
-		{
-			formatex(szFmt, charsmax(szFmt), "Ronda: %i | TT: %i | CT: %i", g_iRounds, g_iRound_team[TT], g_iRound_team[CT])
-		}
-		set_member_game(m_GameDesc, szFmt)
-	}
-	else
-	{
-		set_member_game(m_GameDesc, "PUG NO ALIVE")
-	}
-	
-}
-
-public ev_new_round()
-{
-	
-	if(pug_state == NO_ALIVE)
-	{
-		return
-	}
-	else if(pug_state == COMMENCING)
-	{
-		pug_state = ALIVE
-		set_cvar_num("mp_round_infinite", 0)
-	}
-	
-	if(round_knife)
-	{
-		fn_update_server_name(0)
-		return
-	}
-
-	g_iRounds++
-
-	#if defined END_ROUND_KNIFE_FIX
-	if(g_iRounds == 1)
-	{
-		set_cvar_num(Pregame_Cmds[1][COMMAND], 0)
-		arrayset(g_iFrags, 0, MAXPLAYERS)
-		arrayset(g_iDeaths, 0, MAXPLAYERS)
-	}
-	#endif
-
-	if(g_iRounds == 15 || g_iRound_team[CT] == 15 || g_iRound_team[TT] == 15)
-	{
-		client_cmd(0, "spk ^"%s^"; spk ^"%s^"", SND_STINGER[6], SND_STINGER[6])
-		set_dhudmessage(255, 255, 255, -1.0, 0.3, 0, 1.0, 1.5)
-		if(g_iRounds == 30)
-		{
-			show_dhudmessage(0, "Ronda Final")
-		}
-		else
-		{
-			show_dhudmessage(0, "Punto de partido")
-		}
-	}
-
-	fn_update_server_name(0)
-	fn_score(0)
-	
-	for(new i = 1 ; i <= iMaxPlayers ; i++)
-	{
-		arrayset(g_iDmg[i], 0, MAXPLAYERS)
-		arrayset(g_iHits[i], 0, MAXPLAYERS)
-	}
-}
-
-public plugin_end()
-{
-	TrieDestroy(t_Command)
-	TrieDestroy(t_Command_Plugin)
-	ArrayDestroy(g_maps)
-}
-stock is_user_admin(id)
-{
-	new __flags=get_user_flags(id);
-	return (__flags>0 && !(__flags&ADMIN_USER));
-}
-read_maps()
-{
-	new file[32]
-	new curmap[32]
-	ArrayPushString(g_maps, "Jugar Este Mapa")
-	get_mapname(curmap, charsmax(curmap))
-	new dh = open_dir("maps", file, charsmax(file))
-	if(!dh)
-	{
-		set_fail_state("Error al abrir la carpeta de mapas");
-		return
-	}
-	
-	while(dh)
-	{
-		trim(file)
-		if(check_bsp_file(file))
-		{
-			replace(file, charsmax(file), ".bsp", "")
-			if(equal(curmap, file))
+			fgets(fh, Line, charsmax(Line))
+			replace(Line, charsmax(Line), ".bsp", "");
+			trim(Line);
+			if(!Line[0] || Line[0] == ';' || (Line[0] == '/' && Line[1] == '/') || Line[0] == '#' || !is_map_valid(Line) || equali(currentmap, Line))
 			{
 				continue;
 			}
-			ArrayPushString(g_maps, file)
+			ArrayPushString(g_maps, Line)
 		}
-		if(!next_file(dh, file, charsmax(file)))
-		{
-			close_dir(dh)
-			dh = false
-		}
-	}
-	
-}
-bool:check_bsp_file(file[])
-{
-	if(equal(file[strlen(file)-4], ".bsp"))
-	{
-		return true
-	}
-	
-	return false
-}
-public pfn_postink(id)
-{
-	if((1 <= get_team(id) <= 2) && pug_state == ALIVE)
-	{
-		client_cmd(id, "+showscores")
-	}
-}
-public pfn_remove_weapon(ent)
-{
-	set_pev(ent, pev_flags, FL_KILLME)
-}
-public pfn_remove_entity(id)
-{
-	if(pev_valid(id))
-	{
-		engfunc(EngFunc_RemoveEntity, id)
-	}
-	//client_print(0, print_chat, "Think")
-}
-reset_user_vars()
-{
-	arrayset(ready, false, MAXPLAYERS)
-	ready_count = 0
-	g_vote_id = 0;
-	round_knife = false
-	half_time = false
-	g_iRound_team[TT] = 0
-	g_iRound_team[CT] = 0
-	arrayset(g_iFrags, 0, MAXPLAYERS)
-	arrayset(g_iDeaths, 0, MAXPLAYERS)
-}
-stock pug_register_command(Command[], Function[], Plugin)
-{
-/*
-	new szPlugin[5]
-	num_to_str(Plugin, szPlugin, charsmax(szPlugin))
-*/
-	new funcid = get_func_id(Function, Plugin)
-	if(!funcid)
-	{
-		server_print("Funcion: ^"%s^" No encontrada", Function)
-		return
-	}
-	else if(TrieKeyExists(t_Command, Command))
-	{
-		server_print("Funcion ^"%s^" ya existente", Command)
-		return
-	}
-
-	TrieSetCell(t_Command, Command, Plugin)
-	TrieSetCell(t_Command_Plugin, Command, funcid)
-}
-public start_pregame()
-{
-	for(new i = 0 ; i < sizeof(Pregame_Cmds) ; i++)
-	{
-		set_cvar_string(Pregame_Cmds[i][COMMAND], Pregame_Cmds[i][VALUE])
-	}
-	is_intermission = false
-	pug_state = NO_ALIVE
-	gMsgRegisterStatusIcon = register_message(gMsgStatusIcon, "pfn_StatusIcon")
-	set_cvar_num("sv_restart", 1)
-	EnableHamForward(SpawnWeapon)
-	EnableHamForward(DefuseKit)
-	reset_user_vars()
-	fn_update_server_name(0)
-	if(get_pcvar_num(g_pcvar_votemap) == 1)
-	{
-		set_task(1.0, "pfn_Hud_Ready", TASK_HUD_READY, _, _, "b")
+		fclose(fh);
 	}
 	else
 	{
-		g_vote_countdown = 60
-		set_task(1.0, "pfn_waiting_players", TASK_HUD_READY, _, _, "b")
-	}
-
-	if(private)
-	{
-		set_cvar_string(Pregame_Cmds[3][COMMAND], "0")
-	}
-}
-
-public pfn_StatusIcon(m, e, id)
-{
-	if(pug_state == ALIVE && !round_knife)
-	{
-		unregister_message(gMsgStatusIcon, gMsgRegisterStatusIcon)
-		return PLUGIN_CONTINUE
-	}
-	new arg[4]
-	get_msg_arg_string(2, arg, charsmax(arg))
-	if(equal(arg, "c4"))
-	{
-		client_cmd(id, "drop weapon_c4")
-	}
-	return PLUGIN_CONTINUE
-}
-public pfn_Hud_Ready()
-{
-	set_hudmessage(255, 0, 0, 0.8, 0.07, 0, 1.0, 1.0)
-	new i;
-	new __pcount = 0
-	for(i = 1 ; i <= iMaxPlayers ;i++ )
-	{
-		if(is_user_connected(i) && 1 <= get_team(i) <= 2)
+		new file[32]
+		new dh = open_dir("maps", file, charsmax(file))
+		while(dh)
 		{
-			__pcount++
+			if((!equal(file, ".") || !equal(file, "..")))
+			{
+				if(strlen(file) > 4)
+				{
+					strtolower(file)
+					if(equal(file[strlen(file) - 4], ".bsp"))
+					{
+						replace(file, charsmax(file), ".bsp", "");
+						if(equali(currentmap, file))
+						{
+							continue;
+						}
+						ArrayPushString(g_maps, file);
+					}
+				}
+			}
+			if(!next_file(dh, file, charsmax(file)))
+			{
+				close_dir(dh)
+				dh = false
+				break;
+			}
 		}
 	}
-	ShowSyncHudMsg(0, Sync1, "No Listos: %i", __pcount - ready_count)
-	new fmt[33 * 33], name[32]
-	
-	for(i = 1 ; i <= iMaxPlayers ;i++ )
+	server_print("[%s] %i Mapas cargados %s", PLUGIN, ArraySize(g_maps) - 1, get_pcvar_num(g_iMapType) == 0 ? "del directorio" : "del archivo");
+}
+StartPregame()
+{
+	pug_state = NO_ALIVE;
+	task_remove(TASK_READY)
+	task_remove(TASK_VOTE)
+	task_remove(TASK_INTERMISSION)
+	is_intermission = false
+	g_iReadyCount = 0
+	g_tPugWin = WINSTATUS_NONE;
+	CleanBit(g_bReady)
+	set_task(1.0, "OnUpdateHudReady", TASK_READY, _, _, "b")
+	for(new i = 0 ; i < sizeof(cvar_warmup) ; i++)
 	{
-		if(ready[i] || !is_user_connected(i) || !(1 <= get_team(i) <= 2))
-		{
-			continue;
-		}
-		get_user_name(i, name, charsmax(name))
-		format(fmt, charsmax(fmt), "%s%s^n", fmt, name)
+		set_cvar_string(cvar_warmup[i][NAME], cvar_warmup[i][VALUE])
 	}
-	set_hudmessage(255, 255, 255, 0.8, 0.1, 0, 1.0, 1.0)
-	ShowSyncHudMsg(0, Sync2, fmt)
-	copy(fmt, charsmax(fmt), "")
-	set_hudmessage(0, 255, 0, 0.8, 0.5, 0, 1.0, 1.0)
-	ShowSyncHudMsg(0, Sync3, "Listos: %i", ready_count)
-	for(i = 1 ; i <= iMaxPlayers ;i++ )
-	{
-		if(!ready[i] || !is_user_connected(i) || !(1 <= get_team(i) <= 2))
-		{
-			continue;
-		}
-		get_user_name(i, name, charsmax(name))
-		format(fmt, charsmax(fmt), "%s%s^n", fmt, name)
-	}
-	set_hudmessage(255, 255, 255, 0.8, 0.53, 0, 1.0, 1.0)
-	ShowSyncHudMsg(0, Sync4, fmt)
+	rg_round_end(0.1, WINSTATUS_DRAW, ROUND_GAME_COMMENCE)
+	set_member_game(m_bCompleteReset, true)
+	EnableHookChain(g_MakeBomber)
 }
-public plugin_natives()
+stock rh_client_cmd(id, cmd[], any:...)
 {
-	register_native("pug_register_command", "native_register_command", .style=0)
-	register_native("pug_get_state", "native_pug_get_state")
+	new temp[128]
+	vformat(temp, charsmax(temp), cmd, 3);
+	message_begin(id > 0 ? MSG_ONE : MSG_ALL, SVC_DIRECTOR, _, id > 0 ? id : 0)
+	write_byte(strlen(temp) + 2)
+	write_byte(10)
+	write_string(temp)
+	message_end()
 }
-public native_pug_get_state(pl, pr)
+public OnSay(id)
 {
-	return pug_state;
-}
-public native_register_command(pl, pr)
-{
-	new szCommand[20], szForward[32]
-	get_string(1, szCommand, charsmax(szCommand))
-	get_string(2, szForward, charsmax(szForward))
-	pug_register_command(szCommand, szForward, pl)
-}
-public pfn_Hook_Say(id)
-{
-	if(!is_user_connected(id))
-	{
-		return PLUGIN_CONTINUE
-	}
-	static said[32]
-	read_argv(1, said, charsmax(said))
+	// type[4] == 't'
+	static said[256], name[32], type[9], szMsg[32], team, i, bType
+	read_argv(0, type, charsmax(type))
+	read_args(said, charsmax(said))
 	remove_quotes(said)
+	
 	trim(said)
-	if(TrieKeyExists(t_Command, said))
-	{
-		new iPlugin, iFunc
-		TrieGetCell(t_Command, said, iPlugin)
-		TrieGetCell(t_Command_Plugin, said, iFunc)
-		callfunc_begin_i(iFunc, iPlugin)
-		callfunc_push_int(id)
-		callfunc_end()
-		return PLUGIN_HANDLED_MAIN
-	}
-	return PLUGIN_CONTINUE
-}
-
-public pfn_ready(id)
-{
-	if(pug_state != NO_ALIVE || !(1 <= get_team(id) <= 2))
-	{
-		client_print(id, print_chat, "%s Accion no permitida en este momento", TAG)
-		return
-	}
-	else if(ready[id])
-	{
-		client_print(id, print_chat, "%s Ya estas listo", TAG)
-		return
-	}
-	new name[32]
-	get_user_name(id, name, charsmax(name))
-	client_print(0, print_chat, "%s %s Esta Listo", TAG, name)
-	ready[id] = true
-	ready_count ++
-	if(ready_count == get_pcvar_num(pcvar_max_players))
-	{
-		start_vote()
-	}
-}
-public pfn_unready(id)
-{
-	if(pug_state != NO_ALIVE)
-	{
-		client_print(id, print_chat, "%s Accion no permitida en este momento", TAG)
-		return
-	}
-	else if(!ready[id])
-	{
-		client_print(id, print_chat, "%s Aun no estas listo", TAG)
-		return
-	}
-	new name[32]
-	get_user_name(id, name, charsmax(name))
-	client_print(0, print_chat, "%s %s Dejo de estar Listo", TAG, name)
-	ready[id] = false;
-	ready_count --
-}
-public pfn_TextMsg(m, e, id)
-{
-	static msg[23]
-	get_msg_arg_string(2, msg, charsmax(msg))
-	if(equal(msg, "#Game_will_restart_in"))
+	if(!said[0])
 	{
 		return PLUGIN_HANDLED
 	}
-	return PLUGIN_CONTINUE
-}
-public pfn_Hook_ChooseTeam(id, _:slot)
-{
-	new count_t, players[32], count_ct
-	if(!(1 <= slot <= 2))
-	{
-		if(slot == 5)
-		{
-			get_players(players, count_t, "e", "TERRORIST")
-			get_players(players, count_ct, "e", "CT")
 
-			if(count_t >= (get_pcvar_num(pcvar_max_players) / 2) && count_ct >= (get_pcvar_num(pcvar_max_players) / 2) )
-			{
-				client_print(id, print_chat, "%s Todos los equipos se encuentran llenos", TAG)
-				SetHookChainReturn(ATYPE_INTEGER, 0)
-				return HC_BREAK
-			}
-		}
-		return HC_CONTINUE
-	}
-	else if((1 <= slot <= 2) && (1 <= get_team(id) <= 2) && pug_state == ALIVE)
+	if(said[0] == '.')
 	{
-		client_print(id, print_chat, "%s No puedes hacer un cambio de equipos estando una partida en curso", TAG)
-		SetHookChainReturn(ATYPE_INTEGER, 0)
-		return HC_BREAK
-	}
-	new count
-	get_players(players, count, "e", slot == 1 ? "TERRORIST" : "CT")
-
-	if(count >= (get_pcvar_num(pcvar_max_players) / 2) )
-	{
-		center_print(id, "%s Este Equipo esta lleno^n^n^n^n^n", TAG)
-		SetHookChainReturn(ATYPE_INTEGER, 0)
-		return HC_BREAK
-	}
-	return HC_CONTINUE
-}
-
-stock center_print(id, const msg[], any:...)
-{
-	new arg[50]
-	vformat(arg, charsmax(arg), msg, 3)
-	if(id == 0)
-	{
-		for(new z = 1 ; z <= iMaxPlayers ; z++)
+		read_argv(1, name, charsmax(name))
+		strtolower(name)
+		static fwd
+		if(TrieGetCell(g_commands, name, fwd))
 		{
-			if(!is_user_connected(z))
-			{
-				continue
-			}
-			engfunc(EngFunc_ClientPrintf, z, 1, arg)
+			ExecuteForward(fwd, _, id)
 		}
-	}
-	else
-	{ 
-		engfunc(EngFunc_ClientPrintf, id, 1, arg)
-	}
-}
-
-public client_putinserver(id)
-{
-	if(ready[id])
-	{
-		ready[id] = false
-		ready_count--
-	}
-	g_iFrags[id] = 0
-	g_iDeaths[id] = 0
-	fn_update_server_name(id)
-	if(private && pug_state != ALIVE)
-	{
-		set_task(1.0, "pfn_set_team", id + 666)
-	}
-	
-}
-public pfn_set_team(id)
-{
-	id -= 666
-	if(!is_user_connected(id))
-		return
-	new _sz__steam_id_put[32]
-	get_user_authid(id, _sz__steam_id_put, charsmax(_sz__steam_id_put))
-	if(TrieKeyExists(g_private, _sz__steam_id_put))
-	{
-		new _c_team
-		TrieGetCell(g_private, _sz__steam_id_put, _c_team)
-		
-		if(get_team(id) == _c_team)
+		else
 		{
-			return
-		}
-		
-		switch(_c_team)
-		{
-			case 1: rg_set_user_team(id, TEAM_TERRORIST)
-			case 2: rg_set_user_team(id, TEAM_CT)
-			case 3: rg_join_team(id, TEAM_SPECTATOR)
-		}
-		
-		if(1 <= _c_team <= 2)
-		{
-			ExecuteHam(Ham_CS_RoundRespawn, id)
+			client_print(id, print_chat, "[%s] Comando Invalido (%s)", PLUGIN, name)
 		}
 	}
-}
-public client_disconnect(id)
-{
-	if(is_intermission)
+	get_user_name(id, name, charsmax(name))
+	team = get_member(i, m_iTeam)
+	if(equal(type, "say_team"))
 	{
-		return
-	}
-	if(ready[id])
-	{
-		ready[id] = false
-		ready_count--
-	}
-	new team = get_team(id)
-	if(pug_state == ALIVE && (1 <= team <= 2))
-	{
-		new count = 0
-		
-		for(new i = 1 ; i <= iMaxPlayers ;i++)
-		{
-			if(!is_user_connected(i) || i == id || get_team(i) != team)
-			{
-				continue
-			}
-			count++
-		}
-		if(count <= 2)
-		{
-			client_print(0, print_chat, "%s Partida cancelada por ausencia de jugadores en el equipo %s", TAG, team == 1 ? "Terrorista" : "Anti-Terrorista")
-			start_pregame()
-		}
-	}
-}
-
-fn_score(id=0)
-{
-	if(pug_state == NO_ALIVE)
-	{
-		client_print(id, print_chat, "%s Accion no permitida en este momento", TAG)
-		return
-	}
-	if(g_iRound_team[CT] == g_iRound_team[TT])
-	{
-		client_print(0, print_chat, "%s La puntuacion esta empatada %i - %i", TAG, g_iRound_team[CT], g_iRound_team[TT])
+		bType = true
 	}
 	else
 	{
-		client_print(0, print_chat, "%s %s: %i - %s: %i ", TAG, g_iRound_team[CT] > g_iRound_team[TT] ? "Anti-Terroristas" : "Terroristas", g_iRound_team[CT] > g_iRound_team[TT] ? g_iRound_team[CT] : g_iRound_team[TT], g_iRound_team[CT] < g_iRound_team[TT] ? "Anti-Terroristas" : "Terroristas", g_iRound_team[CT] < g_iRound_team[TT] ? g_iRound_team[CT] : g_iRound_team[TT] )
+		bType = false
 	}
-}
-public pfn_score(id)
-{
-	fn_score(id)
-}
-public start_vote()
-{
-	remove_task(TASK_HUD_READY)
-	g_vote_id = 0
-	next_vote()
-}
-make_hud_title(msg[], any:...)
-{
-	new fmt[50]
-	vformat(fmt, charsmax(fmt), msg, 2)
-	set_hudmessage(0, 255, 0, -1.0, 0.0, 0, 1.0, 1.1)
-	ShowSyncHudMsg(0, Sync1, fmt)
-}
-make_hud_body(msg[], any:...)
-{
-	new fmt[512]
-	vformat(fmt, charsmax(fmt), msg, 2)
-	set_hudmessage(255, 255, 255, -1.0, 0.03, 0, 1.0, 1.1)
-	ShowSyncHudMsg(0, Sync2, fmt)
-}
-public next_vote()
-{
-	remove_task(TASK_HUD_VOTE)
-	remove_task(TASK_END_VOTE)
-	g_vote_id++
-	switch(g_vote_id)
+	switch(team)
 	{
-		case 1 :
+		case 1:
 		{
-			if(get_pcvar_num(g_pcvar_votemap) == 1)
+			if(is_user_alive(id))
 			{
-				set_task(1.0, "pfn_hud_votemap", TASK_HUD_VOTE, _, _, "b")
-				set_task(15.0, "pfn_vote_map_end", TASK_END_VOTE)
-				g_vote_countdown = 15
-				pug_state = VOTEMAP
-				start_vote_map()
+				if(bType)
+				{
+					copy(szMsg, charsmax(szMsg), "#Cstrike_Chat_T")
+				}
+				else
+				{
+					copy(szMsg, charsmax(szMsg), "#Cstrike_Chat_All")
+				}
 			}
 			else
 			{
-				set_pcvar_num(g_pcvar_votemap, 1)
-				next_vote();
+				if(bType)
+				{
+					copy(szMsg, charsmax(szMsg), "#Cstrike_Chat_T_Dead")
+				}
+				else
+				{
+					copy(szMsg, charsmax(szMsg), "#Cstrike_Chat_AllDead")
+				}
 			}
 		}
-		default :
+		case 2:
 		{
-			start_countdown()
+			if(is_user_alive(id))
+			{
+				if(bType)
+				{
+					copy(szMsg, charsmax(szMsg), "#Cstrike_Chat_CT")
+				}
+				else
+				{
+					copy(szMsg, charsmax(szMsg), "#Cstrike_Chat_All")
+				}
+			}
+			else
+			{
+				if(bType)
+				{
+					copy(szMsg, charsmax(szMsg), "#Cstrike_Chat_CT_Dead")
+				}
+				else
+				{
+					copy(szMsg, charsmax(szMsg), "#Cstrike_Chat_AllDead")
+				}
+			}
+		}
+		default:
+		{
+			copy(szMsg, charsmax(szMsg), "#Cstrike_Chat_AllSpec")
 		}
 	}
-}
-
-public start_countdown()
-{
-	EnableHamForward(PlayerPostink)
-	set_cvar_num("sv_maxspeed", 0)
-	g_vote_countdown = 4
-	set_task(1.0, "pfn_starting_game", TASK_HUD_READY, _, _, "b")
-	pfn_starting_game(TASK_HUD_READY)
-	set_pcvar_num(g_pcvar_votemap, 1)
-
-}
-
-public start_pug()
-{
-	set_cvar_num("sv_restart", 1)
-	for(new i = 0 ; i < sizeof(PugStartCmds) ;i++)
+	if(bType)
 	{
-		set_cvar_string(PugStartCmds[i][COMMAND], PugStartCmds[i][VALUE])
-	}
-	g_iRounds = 0;
-	arrayset(g_iRound_team, 0, 2)
-	arrayset(g_iFrags, 0, MAXPLAYERS)
-	arrayset(g_iDeaths, 0, MAXPLAYERS)
-	is_intermission = false
-	DisableHamForward(DefuseKit)
-}
-
-public pfn_hud_votemap()
-{
-	if(g_vote_countdown-- <= 0)
-	{
-		g_vote_countdown = 0
-	}
-	fn_update_vote_map_hud()
-}
-fn_update_vote_map_hud()
-{
-	make_hud_title("Votacion de Mapa: (%i)", g_vote_countdown)
-	new count
-	new hud[512]
-	new temp
-	for(new i = 0 ; i < ArraySize(g_maps) ; i++)
-	{
-		temp = g_votes[i]
-		if(temp >= 1)
+		for(i = 1 ; i <= g_iMaxPlayers ; i++)
 		{
-			count++
-			format(hud, charsmax(hud), "%s%a: %i %s^n", hud, ArrayGetStringHandle(g_maps, i), temp, temp > 1 ? "votos" : "voto")
-		}	
-	}
-	
-	if(!count)
-	{
-		formatex(hud, charsmax(hud), "No hay votos")
-	}
-	make_hud_body(hud)
-}
-public start_vote_map()
-{
-	vote_map = true
-	g_vote_count = 0
-	make_menu_votemap()
-}
-make_menu_votemap()
-{
-	arrayset(g_votes, 0, sizeof(g_votes))
-	g_VoteMenu = menu_create("\rVotacion de Mapa", "mh_vote_map")
-	new map[32]
-	new i
-	for(i = 0 ; i < ArraySize(g_maps) ;i++)
-	{
-		ArrayGetString(g_maps, i, map, charsmax(map))
-		menu_additem(g_VoteMenu, map)
-	}
-	menu_setprop(g_VoteMenu, MPROP_EXIT, MEXIT_ALL)
-
-	for(i = 1 ; i <= iMaxPlayers ;i++ )
-	{
-		if(!is_user_connected(i) || !( 1 <= get_team(i) <= 2))
-		{
-			continue 
+			if(!is_user_connected(i))
+			{
+				continue
+			}
+			if(get_member(i, m_iTeam) == team)
+			{
+				SendChat(i, id, szMsg, name, said)
+			}
 		}
-		menu_display(i, g_VoteMenu, .page=0)
-	}
-}
-public mh_vote_map(id, menu, item)
-{
-	if(!vote_map)
-	{
-		return
-	}
-	if(item == MENU_EXIT)
-	{
-		g_votes[0]++
-		fn_update_vote_map_hud()
-		check_votes(vote_map);
-		return
-	}
-	g_votes[item]++
-	g_vote_count++
-	fn_update_vote_map_hud()
-	check_votes(vote_map);
-}
-
-public check_votes(bool:active)
-{
-	if(!active)
-	{
-		return
-	}
-	if(g_vote_count == get_pcvar_num(pcvar_max_players))
-	{
-		next_vote();
-	}
-}
-
-public pfn_vote_map_end()
-{
-	vote_map = false
-	client_cmd(0, "slot10")
-	menu_destroy(g_VoteMenu)
-
-	new winner, temp
-	for(new i = 0 ; i < sizeof (g_votes) ; i++)
-	{
-		if(temp < g_votes[i])
-		{
-			temp = g_votes[i]
-			winner = i
-		}
-	}
-
-	if(!winner)
-	{
-		client_print(0, print_chat, "%s Se decidio %a", TAG, ArrayGetStringHandle(g_maps, 0))
-		next_vote();
 	}
 	else
 	{
-		set_pcvar_num(g_pcvar_votemap, 0)
-		server_cmd("changelevel ^"%a^"", ArrayGetStringHandle(g_maps, winner))
+		SendChat(0, id, szMsg, name, said)
 	}
+	said[0] = EOS
+	szMsg[0] = EOS
+	name[0] = EOS
+	return PLUGIN_HANDLED_MAIN
 }
-public pfn_force_start_pug(id)
+SendChat(id, sender, msg[], name[], said[])
 {
-	if(!is_user_admin(id))
+	static msg_type
+	if(!msg_type)
 	{
-		client_print(id, print_chat, "%s No tienes acceso a este comando", TAG)
-		return
+		msg_type = get_user_msgid("SayText");
 	}
-	else if(pug_state != NO_ALIVE)
-	{
-		client_print(id, print_chat, "%s Accion no permitida en este momento", TAG)
-		return
-	}
-	start_vote()
+	message_begin(id == 0 ? MSG_BROADCAST : MSG_ONE_UNRELIABLE, msg_type, _, id)
+	write_byte(sender)
+	write_string(msg)
+	write_string(name)
+	write_string(said)
+	message_end()
 }
-public pfn_force_cancel(id)
+public OnUpdateHudReady()
 {
-	if(!is_user_admin(id))
+	if(pug_state != NO_ALIVE)
 	{
-		client_print(id, print_chat, "%s No tienes acceso a este comando", TAG)
 		return
 	}
-	else if(pug_state != ALIVE)
+	static i, count, len, Hud[32 * 15], name[15]
+	for(i = 1 ; i <= g_iMaxPlayers ; i++)
 	{
-		client_print(id, print_chat, "%s Accion no permitida en este momento", TAG)
-		return
-	}
-	start_pregame()
-}
-public pfn_forceready(id)
-{
-	if(!is_user_admin(id))
-	{
-		client_print(id, print_chat, "%s No tienes acceso a este comando", TAG)
-		return
-	}
-	else if(pug_state != NO_ALIVE)
-	{
-		client_print(id, print_chat, "%s Accion no permitida en este momento", TAG)
-		return
-	}
-	fn_forceready()
-	
-}
-fn_forceready()
-{
-	new catch_players = get_pcvar_num(pcvar_max_players)
-	for(new i = 1 ; i <= iMaxPlayers ; i++)
-	{
-		if(!is_user_connected(i) || !(1<= get_team(i) <= 2) || ready[i])
+		if(!is_user_connected(i) || !(1<=get_user_team(i)<=2) || IsReadyBit(i))
 		{
-			continue
+			continue;
 		}
-		ready[i] = true;
-		ready_count++
-		if(ready_count == catch_players)
+		get_user_name(i, name, charsmax(name))
+		len += formatex(Hud[len], charsmax(Hud), "%s^n", name)
+		count += 1;
+	}
+	set_hudmessage(255, 0, 0, 0.8, 0.07, 0, 1.0, 1.0)
+	ShowSyncHudMsg(0, Sync1, "No listo: %i", count)
+	set_hudmessage(255, 255, 255, 0.8, 0.1, 0, 1.0, 1.0)
+	ShowSyncHudMsg(0, Sync2, Hud)
+	len = 0;
+	count = EOS
+	Hud[0] = EOS
+	for(i = 1 ; i <= g_iMaxPlayers ; i++)
+	{
+		if(!is_user_connected(i) || !(1<=get_user_team(i)<=2) || !IsReadyBit(i))
 		{
-			start_vote()
-			break;
+			continue;
 		}
+		get_user_name(i, name, charsmax(name))
+		len += formatex(Hud[len], charsmax(Hud), "%s^n", name)
+	}
+	set_hudmessage(0, 255, 0, 0.8, 0.5, 0, 1.0, 1.0)
+	ShowSyncHudMsg(0, Sync3, "Listos: %i/%i", g_iReadyCount, get_pcvar_num(g_pPlayers))
+	set_hudmessage(255, 255, 255, 0.8, 0.53, 0, 1.0, 1.0)
+	ShowSyncHudMsg(0, Sync4, Hud)
+	update_scoreboard();
+	Hud[0] = EOS;
+	len = EOS;
+	name[0] = EOS
+}
+public OnSetReady(id)
+{
+	if(pug_state != NO_ALIVE)
+	{
+		client_print(id, print_chat, "[%s] No puedes usar este comando en este momento", PLUGIN)
+		return
+	}
+	if(IsReadyBit(id))
+	{
+		client_print(id, print_chat, "[%s] Ya estas listo", PLUGIN)
+		return 
+	}
+	SetReadyBit(id)
+	g_iReadyCount += 1;
+	OnUpdateHudReady()
+	if(g_iReadyCount >= get_pcvar_num(g_pPlayers))
+	{
+		StartVoting()
+	}
+	return 
+}
+public OnUnReady(id)
+{
+	if(pug_state != NO_ALIVE)
+	{
+		client_print(id, print_chat, "[%s] No puedes usar este comando en este momento", PLUGIN)
+		return
+	}
+	if(!IsReadyBit(id))
+	{
+		client_print(id, print_chat, "[%s] No estas listo", PLUGIN)
+		return 
+	}
+	ClearReadyBit(id)
+	g_iReadyCount -= 1;
+	OnUpdateHudReady()
+	return 
+}
+StartVoting()
+{
+	remove_task(TASK_READY);
+	if(!g_votes)
+	{
+		g_votes = TrieCreate()
+	}
+	TrieClear(g_votes)
+	g_iCurrentVote = -1;
+	pug_state = VOTING;
+	if(get_pcvar_num(g_pVoteMap))
+	{
+		StartVoteMap()
+	}
+	else
+	{
+		NextVote()
 	}
 }
-public pfn_waiting_players(task)
+public NextVote()
 {
-	new pcount = 0
-	for(new i = 1 ; i <= iMaxPlayers ; i++)
+	if(pug_state != VOTING)
 	{
-		if(is_user_connected(i) && 1 <= get_team(i) <= 2)
-		{
-			pcount++
-		}
+		return;
 	}
-	if(g_vote_countdown-- > 0)
+	g_iCurrentVote += 1;
+	if(g_iCurrentVote >= ArraySize(g_aRegisterVotes))
 	{
-		
-		if(pcount == get_pcvar_num(pcvar_max_players))
+		StartPugPre()
+		return;
+	}
+	set_task(0.1, "NextVotePost")
+}
+public NextVotePost()
+{
+	if(g_menu)
+	{
+		menu_destroy(g_menu)
+		g_menu = 0;
+	}
+	TrieClear(g_votes)
+	new array[REGISTER_VOTES], i
+	ArrayGetArray(g_aRegisterVotes, g_iCurrentVote, array)
+	g_iCountDown = get_pcvar_num(g_pVoteCount);
+	g_menu = menu_create(array[VOTENAME], "mh_voteglobal")
+	set_task(1.0, "VoteGlobalCountDown", TASK_VOTE, _, _, "a", g_iCountDown)
+	for( i = 0 ; i < ArraySize(array[OPTIONS]) ; i++)
+	{
+		menu_additem(g_menu, fmt("%a", ArrayGetStringHandle(array[OPTIONS], i)))
+	}
+	menu_setprop(g_menu, MPROP_EXIT, MEXIT_NEVER)
+	for( i = 1 ; i <= g_iMaxPlayers ; i++)
+	{
+		if(!is_user_connected(i) || !(1<=get_user_team(i)<=2))
 		{
-			center_print(0, "Calentamiento 00:%02i^n^n^n^n", g_vote_countdown)
-			if(g_vote_countdown < 5)
+			continue;
+		}
+		menu_display(i, g_menu, 0, g_iCountDown)
+	}
+}
+public mh_voteglobal(id, menu, item)
+{
+	if(item == MENU_EXIT)
+	{
+		return
+	}
+	new num[3], vote
+	num_to_str(item, num, charsmax(num))
+	if(!TrieGetCell(g_votes, num, vote))
+	{
+		vote = 0;
+	}
+	vote += 1;
+	TrieSetCell(g_votes, num, vote)
+	UpdatehudVoteGlobal()
+}
+public VoteGlobalCountDown(task)
+{
+	new i, num[4], vote
+	if(--g_iCountDown > 0)
+	{
+		UpdatehudVoteGlobal()
+	}
+	else
+	{
+		remove_task(task)
+		new win, votes, array[REGISTER_VOTES]
+		ArrayGetArray(g_aRegisterVotes, g_iCurrentVote, array)
+		for(i = 0 ; i < ArraySize(array[OPTIONS]) ; i++)
+		{
+			num_to_str(i, num, charsmax(num))
+			TrieGetCell(g_votes, num, vote)
+			
+			if(vote > votes)
 			{
-				client_cmd(0, "spk ^"%s^"", SND_COUNTER_BEEP[6])
+				win = i;
+				votes = vote
+			}	
+		}
+		for(i = 1 ; i <= g_iMaxPlayers ; i++)
+		{
+			if(is_user_connected(i))
+			{
+				menu_cancel(i);
+			}
+		}
+		menu_destroy(g_menu)
+		ExecuteForward(array[FUNC], _, win)
+	}
+}
+public client_disconnected(id)
+{
+	if(IsReadyBit(id))
+	{
+		ClearReadyBit(id)
+		g_iReadyCount -= 1;
+	}
+}
+UpdatehudVoteGlobal()
+{
+	new num[4], vote, array[REGISTER_VOTES], allvotes
+	ArrayGetArray(g_aRegisterVotes, g_iCurrentVote, array)
+	MakeTitleHud("%s: (%02i)", array[VOTENAME], g_iCountDown)
+	for(new i = 0 ; i < ArraySize(array[OPTIONS]) ; i++)
+	{
+		num_to_str(i, num, charsmax(num))
+		if(TrieGetCell(g_votes, num, vote))
+		{
+			MakeBodyHud(true, "%a %i Voto%s^n", ArrayGetStringHandle(array[OPTIONS], i), vote, vote == 1 ? "" : "s")
+			allvotes += vote;
+		}
+	}
+	if(allvotes >= get_pcvar_num(g_pPlayers))
+	{
+		g_iCountDown = 0;
+	}
+	MakeBodyHud();
+}
+MakeTitleHud(msg[], any:...)
+{
+	static temp[50]
+	vformat(temp, charsmax(temp), msg, 2)
+	set_hudmessage(0, 255, 0, -1.0, 0.0, 0, 1.0, 1.1)
+	ShowSyncHudMsg(0, Sync1, temp)
+	temp[0] = EOS
+}
+MakeBodyHud(bool:add=false, msg[]="", any:...)
+{
+	static temp[512], len
+	if(add)
+	{
+		len+=vformat(temp[len], charsmax(temp), msg, 3)
+	}
+	else
+	{
+		if(!len)
+		{
+			vformat(temp, charsmax(temp), msg, 3)
+		}
+		set_hudmessage(255, 255, 255, -1.0, 0.03, 0, 1.0, 1.1)
+		ShowSyncHudMsg(0, Sync2, temp)
+		temp[0] = EOS
+		len = EOS
+	}
+}
+StartVoteMap()
+{
+	
+	new i;
+	g_iCountDown = get_pcvar_num(g_pVoteCount);
+	set_task(1.0, "VoteMapCountDown", TASK_VOTE, _, _, "a", g_iCountDown)
+	g_menu = menu_create("Votacion de Mapa", "mh_votemap")
+	for(i = 0 ; i < ArraySize(g_maps) ; i++)
+	{
+		menu_additem(g_menu, fmt("%a", ArrayGetStringHandle(g_maps, i)))
+	}
+	menu_setprop(g_menu, MPROP_EXIT, MEXIT_NEVER)
+	for( i = 1 ; i <= g_iMaxPlayers ; i++)
+	{
+		if(!is_user_connected(i) || !(1<=get_user_team(i)<=2))
+		{
+			continue;
+		}
+		menu_display(i, g_menu, 0, g_iCountDown)
+	}
+}
+public mh_votemap(id, menu, item)
+{
+	if(item == MENU_EXIT)
+	{
+		return;
+	}
+	new num[4], votes
+	num_to_str(item, num, charsmax(num))
+	TrieGetCell(g_votes, num, votes)
+	votes += 1;
+	TrieSetCell(g_votes, num, votes)
+	UpdateHudVoteMap()
+}
+UpdateHudVoteMap()
+{
+	new num[4], vote, allvotes
+	MakeTitleHud("Votacion de Mapa: (%02i)", g_iCountDown)
+	for(new i = 0 ; i < ArraySize(g_maps) ; i++)
+	{
+		num_to_str(i, num, charsmax(num))
+		if(TrieGetCell(g_votes, num, vote))
+		{
+			allvotes += vote;
+			MakeBodyHud(true, "%a %i Voto%s^n", ArrayGetStringHandle(g_maps, i), vote, vote == 1 ? "" : "s")
+		}
+	}
+	if(allvotes >= get_pcvar_num(g_pPlayers))
+	{
+		g_iCountDown = 0;
+	}
+	MakeBodyHud()
+}
+public VoteMapCountDown(task)
+{
+	new i, num[4], vote
+	if(--g_iCountDown > 0)
+	{
+		UpdateHudVoteMap()
+	}
+	else
+	{
+		remove_task(task)
+		new win, votes
+		for(i = 0 ; i < ArraySize(g_maps) ; i++)
+		{
+			num_to_str(i, num, charsmax(num))
+			TrieGetCell(g_votes, num, vote)
+			if(vote > votes)
+			{
+				win = i;
+				votes = vote;
+			}
+		}
+		TrieClear(g_votes)
+		for(i = 1 ; i <= g_iMaxPlayers ; i++)
+		{
+			if(is_user_connected(i))
+			{
+				menu_cancel(i);
+			}
+		}
+		menu_destroy(g_menu)
+		if(!win)
+		{
+			client_print(0, print_chat, "[%s] Se decidio %a", PLUGIN, ArrayGetStringHandle(g_maps, win))
+			NextVote()
+		}
+		else
+		{
+			set_pcvar_num(g_pVoteMap, 0);
+			server_cmd("changelevel %a", ArrayGetStringHandle(g_maps, win))
+		}
+	}
+}
+StartPugPre()
+{
+	pug_state = COMMENCING
+	set_pcvar_num(g_pMaxSpeed, 0);
+	EnableHookChain(PreThink)
+	g_iCountDown = 5
+	StartPugCountDown(TASK_INTERMISSION)
+	rg_round_end(float(g_iCountDown)+0.1, WINSTATUS_DRAW, ROUND_GAME_COMMENCE, "", "");
+	set_member_game(m_bCompleteReset, true)
+	set_task(1.0, "StartPugCountDown", TASK_INTERMISSION, _,_,"a",g_iCountDown)
+}
+public OnPlayerThink(id)
+{
+	if(pug_state == COMMENCING || is_intermission)
+	{
+		client_cmd(id, "+strafe%s", is_intermission ? ";+showscores" : "")
+		static item
+		item = get_member(id, m_pActiveItem);
+		if(!is_nullent(item))
+		{
+			set_member(item, m_Weapon_flNextPrimaryAttack, 0.1)
+			set_member(item, m_Weapon_flNextSecondaryAttack, 0.1)
+		}
+	}
+	else
+	{
+		client_cmd(0, "-strafe;-showscores")
+		DisableHookChain(PreThink)
+	}
+}
+public StartPugCountDown(task)
+{
+	if(--g_iCountDown > 0)
+	{
+		client_print(0, print_center, "Empezando Partida: %i", g_iCountDown)
+		client_cmd(0, "spk ^"%s^"", SND_COUNTER_BEEP)
+	}
+	else
+	{
+		remove_task(task)
+		if(get_pcvar_num(g_iLegacyChat))
+		{
+			set_cvar_num("sv_alltalk", 0)
+		}
+		else
+		{
+			set_cvar_num("sv_alltalk", 2)
+		}
+	}
+}
+public OnStartRound()
+{
+	if(pug_state != COMMENCING && pug_state != ALIVE)
+	{
+		return
+	}
+	else if(pug_state == COMMENCING || is_intermission)
+	{
+		if(pug_state == COMMENCING)
+		{
+			g_iHalfRoundNum = (get_pcvar_num(g_pMaxRounds) / 2)
+			for(new i = 0 ; i < sizeof(cvar_pug) ; i++)
+			{
+				set_cvar_string(cvar_pug[i][NAME], cvar_pug[i][VALUE])
+			}
+		}
+		if(is_intermission)
+		{			
+			rg_swap_all_players()
+			for(new i = 1 ; i <= g_iMaxPlayers ; i++)
+			{
+				if(!is_user_connected(i))
+				{
+					continue;
+				}
+				if(is_user_alive(i))
+				{
+					rg_give_default_items(i)
+					rg_set_user_armor(i, 0, ARMOR_NONE)
+				}
+			}
+		}
+		pug_state = ALIVE
+		set_pcvar_num(g_pMaxSpeed, 320)
+		DisableHookChain(g_MakeBomber)
+	}
+	client_cmd(0, "-strafe;-showscores")
+
+}
+public OnMakeBomber()
+{
+	if(pug_state == ALIVE)
+	{
+		DisableHookChain(g_MakeBomber)
+		return HC_CONTINUE
+	}
+	SetHookChainReturn(ATYPE_INTEGER, 0)
+	return HC_SUPERCEDE
+}
+stock get_rounds()
+{
+	return (get_member_game(m_iTotalRoundsPlayed)+1)
+}
+stock get_ct_round_win()
+{
+	return(get_member_game(m_iNumCTWins))
+}
+stock get_tt_round_win()
+{
+	return(get_member_game(m_iNumTerroristWins))
+}
+stock send_scoreboard_msg(const msg[], any:...)
+{
+	static scoreboard[33], gMsgServerName, gMsgScoreInfo
+	if(!gMsgServerName)
+	{
+		gMsgServerName= get_user_msgid("ServerName")
+		gMsgScoreInfo= get_user_msgid("ScoreInfo")
+	}
+	vformat(scoreboard, charsmax(scoreboard), msg, 2)
+
+	message_begin(MSG_ALL, gMsgServerName)
+	write_string(scoreboard)
+	message_end()
+	message_begin(MSG_ALL, gMsgScoreInfo)
+	write_byte(33)
+	write_short(0)
+	write_short(0)
+	write_short(0)
+	write_short(0)
+	message_end()
+}
+public OnStartRoundPost()
+{
+	if(pug_state != ALIVE)
+	{
+		return;
+	}
+	if(is_intermission)
+	{
+		is_intermission = false
+		for(new i = 1 ; i<=g_iMaxPlayers ; i++)
+		{
+			if(!is_user_connected(i))
+			{
+				continue;
+			}
+			if(overtime)
+			{
+				rg_add_account(i, get_pcvar_num(g_pOverTimeMoney), AS_SET)
+			}
+			else
+			{
+				rg_add_account(i, 800, AS_SET)
+			}
+		}
+	}
+	rh_client_cmd(0, "cd fadeout")
+	update_scoreboard()
+}
+public update_scoreboard()
+{
+	if(pug_state == NO_ALIVE)
+	{
+		send_scoreboard_msg("Esperando Jugadores")
+	}
+	else if(pug_state == ALIVE)
+	{
+		if(overtime)
+		{
+			send_scoreboard_msg("R: %i | OT:%i/%i | CT:%i | TT:%i", get_rounds(), get_rounds() - (g_iHalfRoundNum - (get_pcvar_num(g_pOverTimeMaxRounds) / 2)), get_pcvar_num(g_pOverTimeMaxRounds), get_ct_round_win(), get_tt_round_win())
+		}
+		else
+		{
+			send_scoreboard_msg("Ronda: %i | CT: %i | TT: %i", get_rounds(), get_ct_round_win(), get_tt_round_win())
+		}
+	}
+}
+public StartIntermission()
+{
+	is_intermission = true
+	EnableHookChain(PreThink)
+	if(overtime)
+	{
+		g_iCountDown = get_pcvar_num(g_pOverTimeIntermissionCD)
+	}
+	else
+	{
+		g_iCountDown = get_pcvar_num(g_pIntermissionCountdown)
+	}
+	set_pcvar_num(g_pMaxSpeed, 0)
+	set_task(1.0, "IntermissionCountDown", TASK_INTERMISSION, _, _, "a", g_iCountDown)
+}
+public IntermissionCountDown(task)
+{
+	if(--g_iCountDown > 0)
+	{
+		if(pug_state == ENDING)
+		{
+			if(g_tPugWin == WINSTATUS_DRAW)
+			{
+				send_scoreboard_msg("EMPATE!!! %02i:%02i", g_iCountDown / 60 , g_iCountDown % 60)
+			}
+			else
+			{
+				send_scoreboard_msg("Los %s Ganan %02i:%02i", g_tPugWin == WINSTATUS_TERRORISTS ? "Terroristas" : "AntiTerroristas", g_iCountDown / 60 , g_iCountDown % 60)
 			}
 		}
 		else
 		{
-			center_print(0, "Esperando jugadores 00:%02i^n^n^n^n", g_vote_countdown)
+			send_scoreboard_msg("Medio Tiempo: %02i:%02i", g_iCountDown / 60 , g_iCountDown % 60)
+		}
+		
+	}
+	else
+	{
+		if(pug_state == ENDING)
+		{
+			StartPregame()
+		}
+		remove_task(task)
+	}
+}
+public OnRoundEndPre(WinStatus:status, ScenarioEventEndRound:event, Float:tmDelay)
+{
+	if(status == WINSTATUS_DRAW || event == ROUND_GAME_COMMENCE)
+	{
+		SetHookChainArg(3, ATYPE_FLOAT, 0.1)
+		StartPregame()
+		return;
+	}
+	if(pug_state != ALIVE)
+	{
+		return
+	}
+
+	if(get_rounds() == g_iHalfRoundNum)
+	{
+		StartIntermission()
+		SetHookChainArg(3, ATYPE_FLOAT, float(g_iCountDown))
+		return
+	}
+
+	if(get_rounds()>g_iHalfRoundNum)
+	{
+		new bool:end = false
+		new roundswin
+		new maxrounds
+		new roundstowin
+		switch(status)
+		{
+			case WINSTATUS_TERRORISTS :
+			{
+				roundswin = get_tt_round_win()
+			}
+			case WINSTATUS_CTS :
+			{
+				roundswin = get_ct_round_win()
+			}
+			default : return
+		}
+		if(overtime)
+		{
+			maxrounds = g_iHalfRoundNum + (get_pcvar_num(g_pOverTimeMaxRounds)  / 2 );
+		}
+		else
+		{
+			maxrounds = get_pcvar_num(g_pMaxRounds)
+		}
+		roundstowin = maxrounds / 2
+
+		if(roundswin + 1 > roundstowin)
+		{
+			end = true
+			overtime = false
+			pug_state = ENDING
+			g_tPugWin = status
+		}
+		else if( maxrounds == get_rounds())
+		{
+			end = true
+			g_tPugWin = WINSTATUS_DRAW
+			if(get_pcvar_num(g_pOverTime) > 0)
+			{
+				overtime = true
+				g_iHalfRoundNum = (get_pcvar_num(g_pOverTimeMaxRounds)  / 2 ) + get_rounds();
+			}
+		}
+		if(end)
+		{
+			if(!overtime)
+			{
+				pug_state = ENDING
+				set_member_game(m_bCompleteReset, true)
+			}
+			StartIntermission();
+			SetHookChainArg(3, ATYPE_FLOAT, float(g_iCountDown))
+			return
 		}
 	}
-	else if(g_vote_countdown <= 0 && pcount == get_pcvar_num(pcvar_max_players))
-	{
-		remove_task(task)
-		next_vote()
-	}
-	else
-	{
-		set_pcvar_num(g_pcvar_votemap, 1)
-		remove_task(task)
-		start_pregame()
-		fn_forceready();
-		client_print(0, print_chat, "%s Partida no iniciada por la ausencia de jugadores", TAG)
-
-	}
+	set_task(0.1, "update_scoreboard")
 }
-public pfn_starting_game(task)
+public OnChooseTeam(id, any:slot)
 {
-	if(g_vote_countdown == 1)
+	static maxplayers
+	if(!maxplayers)
 	{
-		start_pug()
-		pug_state = COMMENCING
-		round_knife = true
-		EnableHamForward(PlayerSpawn)
+		maxplayers = get_pcvar_num(g_pPlayers) / 2
 	}
-
-	if(g_vote_countdown-- > 0)
+	if(!(MenuChoose_T<=slot<=MenuChoose_CT))
 	{
-		center_print(0, "Empezando Partida: %i^n^n^n^n", g_vote_countdown)
-
+		if(slot == MenuChoose_Spec && is_user_admin(id))
+		{
+			return HC_CONTINUE
+		}
+		if(slot == MenuChoose_AutoSelect)
+		{
+			if(CountTeam(TEAM_TERRORIST) >= maxplayers)
+			{
+				if(CountTeam(TEAM_CT) >= maxplayers)
+				{
+					SetHookChainReturn(ATYPE_INTEGER, 0)
+					return HC_SUPERCEDE
+				}
+				else
+				{
+					SetHookChainArg(2, ATYPE_INTEGER, MenuChoose_CT)
+					return HC_CONTINUE
+				}
+			}
+			else
+			{
+				SetHookChainArg(2, ATYPE_INTEGER, MenuChoose_T)
+				return HC_CONTINUE
+			}
+		}
+		SetHookChainReturn(ATYPE_INTEGER, 0)
+		return HC_SUPERCEDE
 	}
-	else
+	if(CountTeam(slot) >= maxplayers)
 	{
-		DisableHamForward(PlayerPostink)
-		set_cvar_num("sv_maxspeed", 320)
-		remove_task(task)
-		center_print(0, " ");
-		client_print(0, print_chat, "%s Ronda cuchillo, el equipo ganador sera TT", TAG)
+		SetHookChainReturn(ATYPE_INTEGER, 0)
+		return HC_SUPERCEDE
 	}
+	return HC_CONTINUE
 }
-public plugin_precache()
+CountTeam(any:team)
 {
-	precache_generic(SND_COUNTER_BEEP)
-	precache_generic(SND_STINGER)
-	for(new i = 0 ; i < sizeof(SND_MUSIC) ; i++)
+	new count = 0;
+	for(new i = 1 ; i <= g_iMaxPlayers ; i++)
 	{
-		precache_generic(SND_MUSIC[i])
+		if(!is_user_connected(i) || get_member(i, m_iTeam) != team)
+		{
+			continue
+		}
+		count += 1;
 	}
+	return count
+}
+stock is_user_admin(id)
+{
+	new __flags = get_user_flags(id);
+	return (__flags > 0 && !(__flags & ADMIN_USER));
 }
