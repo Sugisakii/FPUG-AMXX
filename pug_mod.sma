@@ -408,7 +408,7 @@ public OnSay(id)
 		}
 	}
 	get_user_name(id, name, charsmax(name))
-	team = get_member(i, m_iTeam)
+	team = get_member(id, m_iTeam)
 	if(equal(type, "say_team"))
 	{
 		bType = true
