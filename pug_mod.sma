@@ -36,6 +36,11 @@ enum _:REGISTER_VOTES
 	Array:OPTIONS,
 	PLID
 }
+enum _:REGISTER_COMMANDS
+{
+	CMD_FWD,
+	CMD_FLAGS
+}
 
 new g_iMapType
 new g_iLegacyChat
@@ -117,7 +122,7 @@ new cvar_pug[][CVARS] =
 	{"mp_respawn_immunitytime", "0"}
 }
 
-native PugRegisterCommand(name[], fwd[]);
+native PugRegisterCommand(name[], fwd[], flags = -1);
 enum PUG_STATE
 {
 	NO_ALIVE = 0,
@@ -142,7 +147,7 @@ public plugin_init()
 	LoadMaps()
 
 	PugRegisterCommand("listo", "OnSetReady")
-	PugRegisterCommand("ready", "OnSetReady")
+	PugRegisterCommand("ready", "OnSetReady", ADMIN_BAN)
 	PugRegisterCommand("unready", "OnUnReady")
 	PugRegisterCommand("nolisto", "OnUnReady")
 }
@@ -239,7 +244,10 @@ public _register_command(pl, pr)
 			log_amx("[%s] Comando %s ya existe", PLUGIN, name)
 			return;
 		}
-		TrieSetCell(g_commands, name, CreateOneForward(pl, fwd, FP_CELL))
+		new array[REGISTER_COMMANDS]
+		array[CMD_FWD] = CreateOneForward(pl, fwd, FP_CELL);
+		array[CMD_FLAGS] = get_param(3)
+		TrieSetArray(g_commands, name, array, REGISTER_COMMANDS)
 	}
 }
 public OnConfigsExecuted()
@@ -397,10 +405,17 @@ public OnSay(id)
 	{
 		read_argv(1, name, charsmax(name))
 		strtolower(name)
-		static fwd
-		if(TrieGetCell(g_commands, name, fwd))
+		static array[REGISTER_COMMANDS]
+		if(TrieGetArray(g_commands, name, array, sizeof(array)))
 		{
-			ExecuteForward(fwd, _, id)
+			if(get_user_flags(id) & array[CMD_FLAGS] || array[CMD_FLAGS] == -1)
+			{
+				ExecuteForward(array[CMD_FWD], _, id)
+			}
+			else
+			{
+				client_print(id, print_chat, "[%s] No tienes acceso a este comando", PLUGIN)
+			}
 		}
 		else
 		{
@@ -617,7 +632,7 @@ public NextVote()
 		return;
 	}
 	g_iCurrentVote += 1;
-	if(g_iCurrentVote >= ArraySize(g_aRegisterVotes))
+	if(g_aRegisterVotes == Invalid_Array || g_iCurrentVote >= ArraySize(g_aRegisterVotes))
 	{
 		StartPugPre()
 		return;
