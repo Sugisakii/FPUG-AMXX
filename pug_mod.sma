@@ -147,9 +147,12 @@ public plugin_init()
 	LoadMaps()
 
 	PugRegisterCommand("listo", "OnSetReady")
-	PugRegisterCommand("ready", "OnSetReady", ADMIN_BAN)
+	PugRegisterCommand("ready", "OnSetReady")
 	PugRegisterCommand("unready", "OnUnReady")
 	PugRegisterCommand("nolisto", "OnUnReady")
+	PugRegisterCommand("start", "OnForceStart", ADMIN_BAN)
+	PugRegisterCommand("cancel", "OnForceCancel", ADMIN_BAN)
+	PugRegisterCommand("forceready", "OnForceReady", ADMIN_BAN)
 }
 public plugin_natives()
 {
@@ -247,7 +250,7 @@ public _register_command(pl, pr)
 		new array[REGISTER_COMMANDS]
 		array[CMD_FWD] = CreateOneForward(pl, fwd, FP_CELL);
 		array[CMD_FLAGS] = get_param(3)
-		TrieSetArray(g_commands, name, array, REGISTER_COMMANDS)
+		TrieSetArray(g_commands, name, array, sizeof(array))
 	}
 }
 public OnConfigsExecuted()
@@ -570,6 +573,10 @@ public OnUpdateHudReady()
 }
 public OnSetReady(id)
 {
+	if(!is_user_connected(id) || !(1<=get_member(id, m_iTeam)<=2))
+	{
+		return
+	}
 	if(pug_state != NO_ALIVE)
 	{
 		client_print(id, print_chat, "[%s] No puedes usar este comando en este momento", PLUGIN)
@@ -591,6 +598,10 @@ public OnSetReady(id)
 }
 public OnUnReady(id)
 {
+	if(!is_user_connected(id) || !(1<=get_member(id, m_iTeam)<=2))
+	{
+		return
+	}
 	if(pug_state != NO_ALIVE)
 	{
 		client_print(id, print_chat, "[%s] No puedes usar este comando en este momento", PLUGIN)
@@ -1229,4 +1240,28 @@ stock is_user_admin(id)
 {
 	new __flags = get_user_flags(id);
 	return (__flags > 0 && !(__flags & ADMIN_USER));
+}
+public OnForceStart(id)
+{
+	new name[32]
+	get_user_name(id, name, charsmax(name))
+	client_print(0, print_chat, "[%s] Admin %s Ha iniciado la partida", PLUGIN, name)
+	StartVoting();
+}
+public OnForceCancel(id)
+{
+	new name[32]
+	get_user_name(id, name, charsmax(name))
+	client_print(0, print_chat, "[%s] Admin %s Ha cancelado la partida", PLUGIN, name)
+	StartPregame()
+}
+public OnForceReady(id)
+{
+	new name[32]
+	get_user_name(id, name, charsmax(name))
+	client_print(0, print_chat, "[%s] Admin %s Ha cancelado la partida", PLUGIN, name)
+	for(new i = 1 ; i <= g_iMaxPlayers ; i++)
+	{
+		OnSetReady(id)
+	}
 }
