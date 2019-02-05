@@ -39,7 +39,8 @@ enum _:REGISTER_VOTES
 enum _:REGISTER_COMMANDS
 {
 	CMD_FWD,
-	CMD_FLAGS
+	CMD_FLAGS,
+	PUG_STATE:CMD_STATE
 }
 
 new g_iMapType
@@ -60,6 +61,8 @@ new g_iCountDown
 new g_pOverTimeMoney
 new g_pOverTimeIntermissionCD
 new g_iCurrentVote = 0
+
+new g_iDamage[33][33]
 
 new Sync1
 new Sync2
@@ -122,7 +125,6 @@ new cvar_pug[][CVARS] =
 	{"mp_respawn_immunitytime", "0"}
 }
 
-native PugRegisterCommand(name[], fwd[], flags = -1);
 enum PUG_STATE
 {
 	NO_ALIVE = 0,
@@ -131,6 +133,7 @@ enum PUG_STATE
 	ALIVE,
 	ENDING
 }
+native PugRegisterCommand(name[], fwd[], flags = -1, PUG_STATE:pugstate = NO_ALIVE);
 new PUG_STATE:pug_state = NO_ALIVE
 public plugin_init()
 {
@@ -142,6 +145,7 @@ public plugin_init()
 	RegisterHookChain(RG_CSGameRules_RestartRound, "OnStartRoundPost", 1)
 	RegisterHookChain(RG_RoundEnd, "OnRoundEndPre", 0)
 	RegisterHookChain(RG_HandleMenu_ChooseTeam, "OnChooseTeam")
+	register_event("Dagame", "OnDamageEvent", "b", "2>0")
 
 	RegisterCvars()
 	LoadMaps()
@@ -151,8 +155,9 @@ public plugin_init()
 	PugRegisterCommand("unready", "OnUnReady")
 	PugRegisterCommand("nolisto", "OnUnReady")
 	PugRegisterCommand("start", "OnForceStart", ADMIN_BAN)
-	PugRegisterCommand("cancel", "OnForceCancel", ADMIN_BAN)
+	PugRegisterCommand("cancel", "OnForceCancel", ADMIN_BAN, ALIVE)
 	PugRegisterCommand("forceready", "OnForceReady", ADMIN_BAN)
+	PugRegisterCommand("dmg", "OnDmg", -1, ALIVE)
 }
 public plugin_natives()
 {
@@ -250,6 +255,7 @@ public _register_command(pl, pr)
 		new array[REGISTER_COMMANDS]
 		array[CMD_FWD] = CreateOneForward(pl, fwd, FP_CELL);
 		array[CMD_FLAGS] = get_param(3)
+		array[CMD_STATE] = any:get_param(4)
 		TrieSetArray(g_commands, name, array, sizeof(array))
 	}
 }
@@ -278,12 +284,8 @@ RegisterCvars()
 	Sync2 = CreateHudSyncObj()
 	Sync3 = CreateHudSyncObj()
 	Sync4 = CreateHudSyncObj()
-
-	if(!get_pcvar_num(g_iLegacyChat))
-	{
-		register_clcmd("say", "OnSay")
-		register_clcmd("say_team", "OnSay")
-	}
+	register_clcmd("say", "OnSay")
+	register_clcmd("say_team", "OnSay")
 }
 LoadMaps()
 {
@@ -411,7 +413,11 @@ public OnSay(id)
 		static array[REGISTER_COMMANDS]
 		if(TrieGetArray(g_commands, name, array, sizeof(array)))
 		{
-			if(get_user_flags(id) & array[CMD_FLAGS] || array[CMD_FLAGS] == -1)
+			if(array[CMD_STATE] != pug_state)
+			{
+				client_print(id, print_chat, "[%s] No se puede ejecutar el comando en este momento", PLUGIN)
+			}
+			else if(get_user_flags(id) & array[CMD_FLAGS] || array[CMD_FLAGS] == -1)
 			{
 				ExecuteForward(array[CMD_FWD], _, id)
 			}
@@ -425,6 +431,12 @@ public OnSay(id)
 			client_print(id, print_chat, "[%s] Comando Invalido (%s)", PLUGIN, name)
 		}
 	}
+	if(get_pcvar_num(g_iLegacyChat) > 0)
+	{
+		said[0] = EOS
+		return PLUGIN_CONTINUE
+	}
+
 	get_user_name(id, name, charsmax(name))
 	team = get_member(id, m_iTeam)
 	if(equal(type, "say_team"))
@@ -734,6 +746,11 @@ public client_disconnected(id)
 		ClearReadyBit(id)
 		g_iReadyCount -= 1;
 	}
+	ResetDMG(id)
+	for(new i = 1 ; i <= get_maxplayers() ; i++)
+	{
+		g_iDamage[i][id] = 0
+	}
 }
 UpdatehudVoteGlobal()
 {
@@ -784,7 +801,6 @@ MakeBodyHud(bool:add=false, msg[]="", any:...)
 }
 StartVoteMap()
 {
-	
 	new i;
 	g_iCountDown = get_pcvar_num(g_pVoteCount);
 	set_task(1.0, "VoteMapCountDown", TASK_VOTE, _, _, "a", g_iCountDown)
@@ -1036,6 +1052,10 @@ public OnStartRoundPost()
 	}
 	rh_client_cmd(0, "cd fadeout")
 	update_scoreboard()
+	for(new i = 1 ; i<=get_maxplayers() ; i++)
+	{
+		ResetDMG(i)
+	}
 }
 public update_scoreboard()
 {
@@ -1259,9 +1279,43 @@ public OnForceReady(id)
 {
 	new name[32]
 	get_user_name(id, name, charsmax(name))
-	client_print(0, print_chat, "[%s] Admin %s Ha cancelado la partida", PLUGIN, name)
+	client_print(0, print_chat, "[%s] Admin %s Ha forzado a estar Listo", PLUGIN, name)
 	for(new i = 1 ; i <= g_iMaxPlayers ; i++)
 	{
-		OnSetReady(id)
+		OnSetReady(i)
+	}
+}
+public OnDamageEvent(id)
+{
+	if(pug_state != ALIVE)
+	{
+		return
+	}
+	static a
+	a = get_user_attacker(id)
+	if(!is_user_connected(a))
+	{
+		return
+	}
+	g_iDamage[a][id] += read_data(2)
+}
+ResetDMG(id)
+{
+	arrayset(g_iDamage[id], 0, sizeof(g_iDamage[]))
+}
+public OnDmg(id)
+{
+	new name[15]
+	for(new i = 1 ; i<=get_maxplayers() ; i++)
+	{
+		if(!is_user_connected(i))
+		{
+			continue;
+		}
+		if(g_iDamage[id][i] > 0)
+		{
+			get_user_name(id, name, charsmax(name))
+			client_print_color(id, i, "^x1[%s] Dmg:^x4%i ^x1->^x3%s", PLUGIN, g_iDamage[id][i], name)
+		}
 	}
 }
