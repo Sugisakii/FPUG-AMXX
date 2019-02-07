@@ -145,7 +145,7 @@ public plugin_init()
 	RegisterHookChain(RG_CSGameRules_RestartRound, "OnStartRoundPost", 1)
 	RegisterHookChain(RG_RoundEnd, "OnRoundEndPre", 0)
 	RegisterHookChain(RG_HandleMenu_ChooseTeam, "OnChooseTeam")
-	register_event("Dagame", "OnDamageEvent", "b", "2>0")
+	register_event("Damage", "OnDamageEvent", "b", "2>0")
 
 	RegisterCvars()
 	LoadMaps()
