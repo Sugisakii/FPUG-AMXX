@@ -1306,6 +1306,7 @@ ResetDMG(id)
 public OnDmg(id)
 {
 	new name[15]
+	console_print(id, "/////// [ DMG ] ///////")
 	for(new i = 1 ; i<=get_maxplayers() ; i++)
 	{
 		if(!is_user_connected(i))
@@ -1316,6 +1317,8 @@ public OnDmg(id)
 		{
 			get_user_name(id, name, charsmax(name))
 			client_print_color(id, i, "^x1[%s] Dmg:^x4%i ^x1->^x3%s", PLUGIN, g_iDamage[id][i], name)
+			console_print(id, "[%s] DMG: %i -> %s", PLUGIN, g_iDamage[id][i], name)
 		}
 	}
+	console_print(id, "////////////////////////")
 }

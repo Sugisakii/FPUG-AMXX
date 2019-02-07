@@ -2,8 +2,15 @@
 	#endinput
 #endif
 #define _pug_include
-
-native PugRegisterCommand(name[], fwd[], flags = -1);
+enum PUG_STATE
+{
+	NO_ALIVE = 0,
+	VOTING,
+	COMMENCING,
+	ALIVE,
+	ENDING
+}
+native PugRegisterCommand(name[], fwd[], flags = -1, PUG_STATE:pugstate);
 native PugNextVote()
 native PugRegisterVote(name[], function[])
 native PugRegisterVoteOption(option[])
