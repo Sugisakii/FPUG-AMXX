@@ -63,6 +63,7 @@ new g_pOverTimeIntermissionCD
 new g_iCurrentVote = 0
 
 new g_iDamage[33][33]
+new g_iHits[33][33]
 
 new Sync1
 new Sync2
@@ -146,6 +147,7 @@ public plugin_init()
 	RegisterHookChain(RG_RoundEnd, "OnRoundEndPre", 0)
 	RegisterHookChain(RG_HandleMenu_ChooseTeam, "OnChooseTeam")
 	register_event("Damage", "OnDamageEvent", "b", "2>0")
+	register_event("DeathMsg", "OnPlayerDeath", "a")
 
 	RegisterCvars()
 	LoadMaps()
@@ -750,6 +752,7 @@ public client_disconnected(id)
 	for(new i = 1 ; i <= get_maxplayers() ; i++)
 	{
 		g_iDamage[i][id] = 0
+		g_iHits[i][id] = 0
 	}
 }
 UpdatehudVoteGlobal()
@@ -1132,7 +1135,13 @@ public OnRoundEndPre(WinStatus:status, ScenarioEventEndRound:event, Float:tmDela
 	{
 		return
 	}
-
+	for(new i = 1 ; i <= g_iMaxPlayers ; i++)
+	{
+		if(is_user_alive(i))
+		{
+			set_task(0.1, "ShowDmg", i)
+		}
+	}
 	if(get_rounds() == g_iHalfRoundNum)
 	{
 		StartIntermission()
@@ -1298,16 +1307,29 @@ public OnDamageEvent(id)
 		return
 	}
 	g_iDamage[a][id] += read_data(2)
+	g_iHits[a][id] += 1
 }
 ResetDMG(id)
 {
 	arrayset(g_iDamage[id], 0, sizeof(g_iDamage[]))
+	arrayset(g_iHits[id], 0, sizeof(g_iHits[]))
 }
 public OnDmg(id)
 {
-	new name[15]
+	if(is_user_alive(id))
+	{
+		client_print(id, print_chat, "[%s] No puedes usar este comando en este momento", PLUGIN)
+	}
+	else
+	{
+		ShowDmg(id)
+	}
+}
+public ShowDmg(id)
+{
+	new name[15], c
 	console_print(id, "/////// [ DMG ] ///////")
-	for(new i = 1 ; i<=get_maxplayers() ; i++)
+	for(new i = 1 ; i<= g_iMaxPlayers ; i++)
 	{
 		if(!is_user_connected(i))
 		{
@@ -1315,10 +1337,26 @@ public OnDmg(id)
 		}
 		if(g_iDamage[id][i] > 0)
 		{
-			get_user_name(id, name, charsmax(name))
-			client_print_color(id, i, "^x1[%s] Dmg:^x4%i ^x1->^x3%s", PLUGIN, g_iDamage[id][i], name)
-			console_print(id, "[%s] DMG: %i -> %s", PLUGIN, g_iDamage[id][i], name)
+			get_user_name(i, name, charsmax(name))
+			client_print_color(id, i, "^x1[%s] Daño:^x4%i ^x1->^x3%s^x1 en ^x4%i ^x1Hit%s", PLUGIN, g_iDamage[id][i], name, g_iHits[id][i], g_iHits[id][i] > 1 ? "s" : "")
+			console_print(id, "[%s] Daño: %i -> %s en %i Hit%s", PLUGIN, g_iDamage[id][i], name, g_iHits[id][i], g_iHits[id][i] > 1 ? "s" : "")
+			c += 1
 		}
 	}
+	if(1 > c)
+	{
+		console_print(id, "[%s] No hiciste daño en esta ronda", PLUGIN)
+		client_print(id, print_chat, "[%s] No hiciste daño en esta ronda", PLUGIN)
+	}
 	console_print(id, "////////////////////////")
+}
+public OnPlayerDeath()
+{
+	if(pug_state != ALIVE || pug_state != ENDING)
+	{
+		return
+	}
+	static victim
+	victim = read_data(2)
+	ShowDmg(victim)
 }
