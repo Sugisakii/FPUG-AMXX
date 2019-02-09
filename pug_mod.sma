@@ -1351,11 +1351,10 @@ public ShowDmg(id)
 }
 public OnPlayerDeath()
 {
-	if(pug_state != ALIVE || pug_state != ENDING)
+	if(pug_state == ALIVE || pug_state == ENDING)
 	{
-		return
+		static victim
+		victim = read_data(2)
+		ShowDmg(victim)
 	}
-	static victim
-	victim = read_data(2)
-	ShowDmg(victim)
 }
