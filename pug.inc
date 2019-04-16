@@ -11,6 +11,7 @@ enum PUG_STATE
 	ENDING
 }
 native PugRegisterCommand(name[], fwd[], flags = -1, PUG_STATE:pugstate = NO_ALIVE);
-native PugNextVote()
-native PugRegisterVote(name[], function[])
-native PugRegisterVoteOption(option[])
+native PugNextVote();
+native PugRegisterVote(name[], function[]);
+native PugRegisterVoteOption(option[]);
+native PugStart();

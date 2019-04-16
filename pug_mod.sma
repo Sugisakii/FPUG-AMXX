@@ -2,7 +2,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.0"
+#define VERSION "2.02 rev. A"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -139,7 +139,6 @@ new PUG_STATE:pug_state = NO_ALIVE
 public plugin_init()
 {
 	register_plugin(PLUGIN, VERSION, AUTHOR)
-
 	DisableHookChain((PreThink = RegisterHookChain(RG_CBasePlayer_PreThink, "OnPlayerThink", 1)))
 	DisableHookChain((g_MakeBomber = RegisterHookChain(RG_CBasePlayer_MakeBomber, "OnMakeBomber", 0)))
 	RegisterHookChain(RG_CSGameRules_RestartRound, "OnStartRound", 0)
@@ -148,6 +147,7 @@ public plugin_init()
 	RegisterHookChain(RG_HandleMenu_ChooseTeam, "OnChooseTeam")
 	register_event("Damage", "OnDamageEvent", "b", "2>0")
 	register_event("DeathMsg", "OnPlayerDeath", "a")
+	register_event("Money", "OnCallMoneyEvent", "b")
 
 	RegisterCvars()
 	LoadMaps()
@@ -167,6 +167,7 @@ public plugin_natives()
 	register_native("PugRegisterVote", "_register_vote")
 	register_native("PugRegisterVoteOption", "_register_vote_option")
 	register_native("PugNextVote", "NextVote")
+	register_native("PugStart", "StartVoting")
 }
 public plugin_precache()
 {
@@ -630,7 +631,7 @@ public OnUnReady(id)
 	OnUpdateHudReady()
 	return 
 }
-StartVoting()
+public StartVoting()
 {
 	remove_task(TASK_READY);
 	if(!g_votes)
@@ -1357,4 +1358,12 @@ public OnPlayerDeath()
 		victim = read_data(2)
 		ShowDmg(victim)
 	}
+}
+public OnCallMoneyEvent(id)
+{
+	if(pug_state != NO_ALIVE)
+	{
+		return
+	}
+	rg_add_account(id, 16000, AS_SET)
 }
