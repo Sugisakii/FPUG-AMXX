@@ -3,7 +3,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.02 rev. A"
+#define VERSION "2.05 rev. A"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -188,16 +188,12 @@ public _register_vote(pl, pr)
 	trim(fwd)
 	if(!name[0] || !fwd[0])
 	{
-		new pluginname[32]
-		get_plugin(pl, pluginname, charsmax(pluginname))
-		log_amx("[%s] No se pudo registrar una votacion [%s]", PLUGIN, pluginname)
+		log_error(AMX_ERR_NATIVE, "[%s] No se pudo registrar una votacion", PLUGIN)
 		return;
 	}
 	if(get_func_id(fwd, pl) == -1)
 	{
-		new pluginname[32]
-		get_plugin(pl, pluginname, charsmax(pluginname))
-		log_amx("[%s] Funcion %s no existe [%s]", PLUGIN, fwd, pluginname)
+		log_error(AMX_ERR_NATIVE, "[%s] Funcion %s no existe", PLUGIN, fwd)
 		return
 	}
 	if(g_aRegisterVotes == Invalid_Array)
@@ -215,14 +211,14 @@ public _register_vote_option(pl, pr)
 	new option[32], array[REGISTER_VOTES]
 	if(!ArraySize(g_aRegisterVotes))
 	{
-		log_amx("[%s] No hay votaciones registradas", PLUGIN)
+		log_error(AMX_ERR_NATIVE, "[%s] No hay votaciones registradas", PLUGIN)
 		return
 	}
 	get_string(1, option, charsmax(option))
 	trim(option)
 	if(!option[0])
 	{
-		log_amx("[%s] Opcion vacia", PLUGIN)
+		log_error(AMX_ERR_NATIVE, "[%s] Opcion vacia", PLUGIN)
 		return;
 	}
 	new id = ArraySize(g_aRegisterVotes) - 1
