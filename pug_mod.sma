@@ -1,4 +1,5 @@
 #include <amxmodx>
+#include <fakemeta>
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
@@ -61,6 +62,10 @@ new g_iCountDown
 new g_pOverTimeMoney
 new g_pOverTimeIntermissionCD
 new g_iCurrentVote = 0
+new g_pMinPlayers
+new g_pForceEndTime
+new g_iTimeToEnd
+new TeamName:g_iForceEndTeam = TEAM_UNASSIGNED
 
 new g_iDamage[33][33]
 new g_iHits[33][33]
@@ -146,6 +151,7 @@ public plugin_init()
 	RegisterHookChain(RG_RoundEnd, "OnRoundEndPre", 0)
 	RegisterHookChain(RG_HandleMenu_ChooseTeam, "OnChooseTeam")
 	RegisterHookChain(RG_CBasePlayer_AddAccount, "OnCallMoneyEvent2")
+	register_forward(FM_ClientDisconnect, "OnClientDisconnected")
 	register_event("Damage", "OnDamageEvent", "b", "2!0", "3=0", "4!0")
 	register_event("DeathMsg", "OnPlayerDeath", "a")
 
@@ -281,6 +287,8 @@ RegisterCvars()
 	g_pOverTimeIntermissionCD		=		register_cvar("pug_overtime_intermission_cd", "10")
 	g_pMaxSpeed						=		get_cvar_pointer("sv_maxspeed");
 	g_pOverTimeMoney				=		register_cvar("pug_overtime_money", "10000")
+	g_pMinPlayers					=		register_cvar("pug_minplayers", "3")
+	g_pForceEndTime					=		register_cvar("pug_force_end_time", "3")
 
 	Sync1 = CreateHudSyncObj()
 	Sync2 = CreateHudSyncObj()
@@ -374,6 +382,8 @@ StartPregame()
 	is_intermission = false
 	g_iReadyCount = 0
 	g_tPugWin = WINSTATUS_NONE;
+	g_iForceEndTeam = TEAM_UNASSIGNED
+	g_iTimeToEnd = 0;
 	CleanBit(g_bReady)
 	set_task(1.0, "OnUpdateHudReady", TASK_READY, _, _, "b")
 	for(new i = 0 ; i < sizeof(cvar_warmup) ; i++)
@@ -1059,6 +1069,10 @@ public OnStartRoundPost()
 	{
 		ResetDMG(i)
 	}
+	if(!CheckPlayers(TEAM_CT))
+	{
+		CheckPlayers(TEAM_TERRORIST)
+	}
 }
 public update_scoreboard()
 {
@@ -1365,4 +1379,79 @@ public OnCallMoneyEvent2(id, amount, RewardType:type, bool:bTrackChange)
 	{
 		SetHookChainArg(2, ATYPE_INTEGER, 16000)
 	}
+}
+CheckTimeToForceEnd()
+{
+	if(get_systime() >= g_iTimeToEnd)
+	{
+		client_print_color(0, print_team_red, 
+			"[%s] ^3La Partida Fue cancelada debido a la falta de jugadores en el equipo %s", 
+			PLUGIN, g_iForceEndTeam == TEAM_TERRORIST ? "Terrorista" : "AntiTerrorista")
+		StartPregame();
+	}
+}
+CheckPlayers(TeamName:team, bool:minus=false)
+{
+	if(team != TEAM_CT && team != TEAM_TERRORIST )
+	{
+		return false;
+	}
+	new count = 0;
+	for(new i = 1 ; i<= g_iMaxPlayers ; i++)
+	{
+		if(is_user_connected(i) && get_member(i, m_iTeam) == team)
+		{
+			count += 1;
+		}
+	}
+	if(minus)
+	{
+		count -= 1;
+	}
+	if(get_pcvar_num(g_pMinPlayers) > count)
+	{
+		if(g_iForceEndTeam != TEAM_UNASSIGNED)
+		{
+			CheckTimeToForceEnd()
+		}
+
+		if(g_iForceEndTeam == TEAM_UNASSIGNED)
+		{
+			StartForceEnd(team)
+		}
+		SendMessgeForceEnd();
+		return true
+	}
+	else
+	{
+		g_iForceEndTeam = TEAM_UNASSIGNED
+		g_iTimeToEnd = 0;
+	}
+	return false;
+}
+StartForceEnd(TeamName:team)
+{
+	g_iTimeToEnd = get_pcvar_num(g_pForceEndTime) * 60
+	g_iTimeToEnd += get_systime()
+	g_iForceEndTeam = team;
+	SendMessgeForceEnd();
+}
+public OnClientDisconnected(id)
+{
+	if(pug_state == ALIVE && g_iForceEndTeam == TEAM_UNASSIGNED)
+	{
+		CheckPlayers(get_member(id, m_iTeam), true)
+	}
+}
+SendMessgeForceEnd()
+{
+	new minutes = g_iTimeToEnd - get_systime()
+	minutes /= 60;
+	if(minutes == 0)
+	{
+		minutes = 1;
+	}
+	client_print_color(0, print_team_grey, 
+		"^3[%s]La partida se cancelara en %i minuto%s debido a falta de jugadores en el equipo %s",
+		PLUGIN, minutes, minutes==1?"":"s", g_iForceEndTeam == TEAM_TERRORIST ? "Terrorista" : "AntiTerrorista");
 }

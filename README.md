@@ -16,20 +16,23 @@ Al igual que el YAP, posee características muy similares o mas bien iguales, ti
 - Se puede hacer votaciones personalizadas usando addons externos
 - Rondas Extras si queda empatada la partida
 - Chat Global (puede desactivarse)
+
 ## CVARS
 |Nombre|Def|Min|Max|Descripcion|
 |:-----|:-:|:-:|:-:|:----------|
 |pug_maptype|1|0|2|Archivo de lectura de mapas<br/>`0` Directorio<br>`1` maps.ini<br>`2` mapcycle.txt|
-|pug_legacychat|0|0|1|Activa el comportamiento de chat como viene en el juego (solo se comunican vivos con vivos, muertos con muertos)<br>`0` Activa Chat Global<br>`1`Desactiva Chat Global
+|pug_legacychat|0|0|1|Activa el comportamiento de chat como viene en el juego (solo se comunican vivos con vivos, muertos con muertos)<br>`0` Activa Chat Global<br>`1`Desactiva Chat Global|
 |pug_players|10|6|32|Minimo de jugadores que se necesita para empezar la partida|
 |pug_vote_countdown|15|0|~|Conteo regresivo para la siguiente votacion|
 |pug_vote_map|1|0|1|Activa la votacion de mapas|
 |pug_maxrounds|30|2|~|Maximo de rondas para culminar la partida|
 |pug_overtime|0|0|1|Activa las rondas extras (para desempate)
 |pug_overtime_rounds|6|1|~|Maximo de rondas para desempate|
-|pug_intermission_countdown|15|0|~|Tiempo que dura el descanso de media partida (cambio de equipos)
+|pug_intermission_countdown|15|0|~|Tiempo que dura el descanso de media partida (cambio de equipos)|
 |pug_overtime_intermission_cd|10|0|~|Tiempo que dura el descanso en las Rondas Extra|
-|pug_overtime_money|10000|800|16000|Dinero inicial al iniciar las rondas extra
+|pug_overtime_money|10000|800|16000|Dinero inicial al iniciar las rondas extra|
+|pug_minplayers|3|0|(pug_players / 2)|Define el minimo de jugadores por equipo para mantener la partida activa|
+|pug_force_end_time|3|0|~|Tiempo que tarda en chequear el numero de jugadores antes de Forzar el final|
 
 ## Comandos (Say):
 - .ready: Cambias de estado a "listo"
