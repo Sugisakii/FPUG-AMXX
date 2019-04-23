@@ -145,9 +145,9 @@ public plugin_init()
 	RegisterHookChain(RG_CSGameRules_RestartRound, "OnStartRoundPost", 1)
 	RegisterHookChain(RG_RoundEnd, "OnRoundEndPre", 0)
 	RegisterHookChain(RG_HandleMenu_ChooseTeam, "OnChooseTeam")
+	RegisterHookChain(RG_CBasePlayer_AddAccount, "OnCallMoneyEvent2")
 	register_event("Damage", "OnDamageEvent", "b", "2!0", "3=0", "4!0")
 	register_event("DeathMsg", "OnPlayerDeath", "a")
-	register_event("Money", "OnCallMoneyEvent", "b")
 
 	RegisterCvars()
 	LoadMaps()
@@ -1359,11 +1359,10 @@ public OnPlayerDeath()
 		ShowDmg(victim)
 	}
 }
-public OnCallMoneyEvent(id)
+public OnCallMoneyEvent2(id, amount, RewardType:type, bool:bTrackChange)
 {
-	if(pug_state != NO_ALIVE)
+	if(pug_state == NO_ALIVE)
 	{
-		return
+		SetHookChainArg(2, ATYPE_INTEGER, 16000)
 	}
-	rg_add_account(id, 16000, AS_SET)
 }
