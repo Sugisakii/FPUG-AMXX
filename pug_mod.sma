@@ -3,7 +3,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.05 rev. A"
+#define VERSION "2.06 rev. A"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -66,7 +66,15 @@ new g_pMinPlayers
 new g_pForceEndTime
 new g_iTimeToEnd
 new TeamName:g_iForceEndTeam = TEAM_UNASSIGNED
-
+enum _:PUG_EVENTS
+{
+	PUG_START = 0, /*(void)*/
+	ALL_PLAYER_IS_READY, /*(void)*/
+	ROUND_START, /*(void)*/
+	ROUND_END, /*(TeamName:win_team)*/
+	PUG_END /*(TeamName:win_team, bool:draw, bool:overtime)*/
+}
+new Array:PugHooks[PUG_EVENTS];
 new g_iDamage[33][33]
 new g_iHits[33][33]
 
@@ -169,15 +177,54 @@ public plugin_init()
 }
 public plugin_natives()
 {
+	for(new i = 0 ; i < PUG_EVENTS ; i++)
+	{
+		PugHooks[i] = ArrayCreate(2)
+	}
 	register_native("PugRegisterCommand", "_register_command")
 	register_native("PugRegisterVote", "_register_vote")
 	register_native("PugRegisterVoteOption", "_register_vote_option")
 	register_native("PugNextVote", "NextVote")
 	register_native("PugStart", "StartVoting")
+	register_native("register_pug_event", "_register_pug_event")
 }
 public plugin_precache()
 {
 	precache_sound(SND_COUNTER_BEEP)
+}
+public _register_pug_event(pl, pr)
+{
+	new event = get_param(1)
+	if(!(0<=event<PUG_EVENTS))
+	{
+		log_error(AMX_ERR_NATIVE, "[%s] Evento Invalido", PLUGIN)
+		return;
+	}
+	new str[32]
+	get_string(2, str, charsmax(str))
+	if((get_func_id(str, pl)) == -1)
+	{
+		log_error(AMX_ERR_NATIVE, "[%s] Funcion Invalida", PLUGIN)
+		return;
+	}
+	new func=-1;
+	switch(event)
+	{
+		case PUG_START,ALL_PLAYER_IS_READY,ROUND_START:
+		{
+			func = CreateOneForward(pl, str);
+		}
+		case ROUND_END,PUG_END:
+		{
+			func = CreateOneForward(pl, str, FP_CELL)
+		}
+	}
+	if(func == -1)
+	{
+		log_error(AMX_ERR_NATIVE, "[%s] Error al crear el evento", PLUGIN)
+		return;
+	}
+	ArrayPushCell(PugHooks[event], func);
 }
 public _register_vote(pl, pr)
 {
@@ -640,6 +687,7 @@ public OnUnReady(id)
 public StartVoting()
 {
 	remove_task(TASK_READY);
+	ExecuteEvent(ALL_PLAYER_IS_READY)
 	if(!g_votes)
 	{
 		g_votes = TrieCreate()
@@ -967,6 +1015,7 @@ public OnStartRound()
 			{
 				set_cvar_string(cvar_pug[i][NAME], cvar_pug[i][VALUE])
 			}
+			ExecuteEvent(PUG_START)
 		}
 		if(is_intermission)
 		{			
@@ -1069,6 +1118,7 @@ public OnStartRoundPost()
 	{
 		CheckPlayers(TEAM_TERRORIST)
 	}
+	ExecuteEvent(ROUND_START)
 }
 public update_scoreboard()
 {
@@ -1156,10 +1206,8 @@ public OnRoundEndPre(WinStatus:status, ScenarioEventEndRound:event, Float:tmDela
 	{
 		StartIntermission()
 		SetHookChainArg(3, ATYPE_FLOAT, float(g_iCountDown))
-		return
 	}
-
-	if(get_rounds()>g_iHalfRoundNum)
+	else if(get_rounds()>g_iHalfRoundNum)
 	{
 		new bool:end = false
 		new roundswin
@@ -1210,10 +1258,14 @@ public OnRoundEndPre(WinStatus:status, ScenarioEventEndRound:event, Float:tmDela
 			{
 				pug_state = ENDING
 				set_member_game(m_bCompleteReset, true)
+				ExecuteEvent(PUG_END, status == WINSTATUS_CTS ? TEAM_CT : TEAM_TERRORIST)
 			}
 			StartIntermission();
 			SetHookChainArg(3, ATYPE_FLOAT, float(g_iCountDown))
-			return
+		}
+		else
+		{
+			ExecuteEvent(ROUND_END, status == WINSTATUS_CTS ? TEAM_CT : TEAM_TERRORIST)
 		}
 	}
 	set_task(0.1, "update_scoreboard")
@@ -1388,7 +1440,7 @@ CheckTimeToForceEnd()
 }
 CheckPlayers(TeamName:team, bool:minus=false)
 {
-	if(team != TEAM_CT && team != TEAM_TERRORIST )
+	if((team != TEAM_CT && team != TEAM_TERRORIST) || pug_state != ALIVE )
 	{
 		return false;
 	}
@@ -1450,4 +1502,23 @@ SendMessgeForceEnd()
 	client_print_color(0, print_team_grey, 
 		"^3[%s]La partida se cancelara en %i minuto%s debido a falta de jugadores en el equipo %s",
 		PLUGIN, minutes, minutes==1?"":"s", g_iForceEndTeam == TEAM_TERRORIST ? "Terrorista" : "AntiTerrorista");
+}
+stock ExecuteEvent(event, any:...)
+{
+	static x;
+	for(x=0 ; x<ArraySize(PugHooks[event]);x++)
+	{
+		
+		switch(event)
+		{
+			case PUG_START,ALL_PLAYER_IS_READY,ROUND_START:
+			{
+				ExecuteForward(ArrayGetCell(PugHooks[event], x), _)
+			}
+			case ROUND_END,PUG_END:
+			{
+				ExecuteForward(ArrayGetCell(PugHooks[event], x), _, getarg(1), getarg(2))
+			}
+		}
+	}
 }

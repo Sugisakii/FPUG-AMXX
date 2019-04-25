@@ -10,8 +10,17 @@ enum PUG_STATE
 	ALIVE,
 	ENDING
 }
+enum PUG_EVENTS
+{
+	PUG_START = 0, /*(void)*/
+	ALL_PLAYER_IS_READY, /*(void)*/
+	ROUND_START, /*(void)*/
+	ROUND_END, /*(TeamName:win_team)*/
+	PUG_END /*(TeamName:win_team)*/
+}
 native PugRegisterCommand(name[], fwd[], flags = -1, PUG_STATE:pugstate = NO_ALIVE);
 native PugNextVote();
 native PugRegisterVote(name[], function[]);
 native PugRegisterVoteOption(option[]);
 native PugStart();
+native register_pug_event(PUG_EVENTS:event, const function[]);
