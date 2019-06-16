@@ -1020,18 +1020,7 @@ public OnStartRound()
 		if(is_intermission)
 		{			
 			rg_swap_all_players()
-			for(new i = 1 ; i <= g_iMaxPlayers ; i++)
-			{
-				if(!is_user_connected(i))
-				{
-					continue;
-				}
-				if(is_user_alive(i))
-				{
-					rg_give_default_items(i)
-					rg_set_user_armor(i, 0, ARMOR_NONE)
-				}
-			}
+			RequestFrame("OnStartRound_NextFrame");
 		}
 		pug_state = ALIVE
 		set_pcvar_num(g_pMaxSpeed, 320)
@@ -1039,6 +1028,21 @@ public OnStartRound()
 	}
 	client_cmd(0, "-strafe;-showscores")
 
+}
+public OnStartRound_NextFrame()
+{
+	for(new i = 1 ; i <= g_iMaxPlayers ; i++)
+	{
+		if(!is_user_connected(i))
+		{
+			continue;
+		}
+		if(is_user_alive(i))
+		{
+			rg_give_default_items(i)
+			rg_set_user_armor(i, 0, ARMOR_NONE)
+		}
+	}
 }
 public OnMakeBomber()
 {
