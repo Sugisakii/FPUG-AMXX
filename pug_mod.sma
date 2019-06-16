@@ -3,7 +3,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.06 rev. B"
+#define VERSION "2.06 rev. C"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -695,12 +695,13 @@ public StartVoting()
 	TrieClear(g_votes)
 	g_iCurrentVote = -1;
 	pug_state = VOTING;
-	if(get_pcvar_num(g_pVoteMap))
+	if(get_pcvar_num(g_pVoteMap) > 0)
 	{
 		StartVoteMap()
 	}
 	else
 	{
+		set_pcvar_num(g_pVoteMap, 1)
 		NextVote()
 	}
 }
