@@ -1040,7 +1040,20 @@ public OnStartRound_NextFrame()
 		}
 		if(is_user_alive(i))
 		{
-			rg_give_default_items(i)
+			if(get_member(i, m_bHasC4))
+			{
+				rg_remove_all_items(i)
+				rg_give_default_items(i)
+				rg_give_item(i, "weapon_c4")
+				set_member(i, m_bHasC4, true)
+				set_entvar(i, var_body, 1)
+			}
+			else
+			{
+				rg_remove_all_items(i)
+				rg_give_default_items(i)
+			}
+			
 			rg_set_user_armor(i, 0, ARMOR_NONE)
 		}
 	}
