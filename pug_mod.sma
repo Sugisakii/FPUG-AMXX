@@ -3,7 +3,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.06 rev.D"
+#define VERSION "2.06 rev.E"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -1446,7 +1446,7 @@ public OnCallMoneyEvent2(id, amount, RewardType:type, bool:bTrackChange)
 		SetHookChainArg(2, ATYPE_INTEGER, 16000)
 	}
 }
-CheckTimeToForceEnd()
+bool:CheckTimeToForceEnd()
 {
 	if(get_systime() >= g_iTimeToEnd)
 	{
@@ -1454,7 +1454,9 @@ CheckTimeToForceEnd()
 			"[%s] ^3La Partida Fue cancelada debido a la falta de jugadores en el equipo %s", 
 			PLUGIN, g_iForceEndTeam == TEAM_TERRORIST ? "Terrorista" : "AntiTerrorista")
 		StartPregame();
+		return true
 	}
+	return false
 }
 CheckPlayers(TeamName:team, bool:minus=false)
 {
@@ -1478,12 +1480,17 @@ CheckPlayers(TeamName:team, bool:minus=false)
 	{
 		if(g_iForceEndTeam != TEAM_UNASSIGNED)
 		{
-			CheckTimeToForceEnd()
+			if(CheckTimeToForceEnd())
+			{
+				return true
+			}
 		}
 
 		if(g_iForceEndTeam == TEAM_UNASSIGNED)
 		{
 			StartForceEnd(team)
+			SendMessgeForceEnd();
+			return true;
 		}
 		SendMessgeForceEnd();
 		return true
