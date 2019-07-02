@@ -3,7 +3,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.06 rev. C"
+#define VERSION "2.06 rev. D"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -1535,7 +1535,7 @@ stock ExecuteEvent(event, any:...)
 			}
 			case ROUND_END,PUG_END:
 			{
-				ExecuteForward(ArrayGetCell(PugHooks[event], x), _, getarg(1), getarg(2))
+				ExecuteForward(ArrayGetCell(PugHooks[event], x), _, getarg(1))
 			}
 		}
 	}
