@@ -18,6 +18,18 @@ enum PUG_EVENTS
 	ROUND_END, /*(TeamName:win_team)*/
 	PUG_END /*(TeamName:win_team)*/
 }
+/*
+* Registrar un comando
+*
+*
+* @param name	Comado a registrar
+* @param fwd	Funcion a llamar cuando se ejecuta el comando
+*
+* @note			public fwd(index, argument[])
+* 				index: player index
+*				argument[type = string]: String adicional a pasar
+*
+*/
 native PugRegisterCommand(name[], fwd[], flags = -1, PUG_STATE:pugstate = NO_ALIVE);
 native PugNextVote();
 native PugRegisterVote(name[], function[]);

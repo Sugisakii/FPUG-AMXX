@@ -3,7 +3,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.06 rev. D"
+#define VERSION "2.06 rev.D"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -305,7 +305,7 @@ public _register_command(pl, pr)
 			return;
 		}
 		new array[REGISTER_COMMANDS]
-		array[CMD_FWD] = CreateOneForward(pl, fwd, FP_CELL);
+		array[CMD_FWD] = CreateOneForward(pl, fwd, FP_CELL, FP_STRING);
 		array[CMD_FLAGS] = get_param(3)
 		array[CMD_STATE] = any:get_param(4)
 		TrieSetArray(g_commands, name, array, sizeof(array))
@@ -474,7 +474,7 @@ public OnSay(id)
 			}
 			else if(get_user_flags(id) & array[CMD_FLAGS] || array[CMD_FLAGS] == -1)
 			{
-				ExecuteForward(array[CMD_FWD], _, id)
+				ExecuteForward(array[CMD_FWD], _, id, said)
 			}
 			else
 			{
