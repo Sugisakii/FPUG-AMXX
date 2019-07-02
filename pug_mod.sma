@@ -1492,7 +1492,10 @@ CheckPlayers(TeamName:team, bool:minus=false)
 			SendMessgeForceEnd();
 			return true;
 		}
-		SendMessgeForceEnd();
+		else
+		{
+			SendMessgeForceEnd();
+		}
 		return true
 	}
 	else
@@ -1507,7 +1510,7 @@ StartForceEnd(TeamName:team)
 	g_iTimeToEnd = get_pcvar_num(g_pForceEndTime) * 60
 	g_iTimeToEnd += get_systime()
 	g_iForceEndTeam = team;
-	SendMessgeForceEnd();
+	//SendMessgeForceEnd();
 }
 public OnClientDisconnected(id)
 {
