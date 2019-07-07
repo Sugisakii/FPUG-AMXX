@@ -1478,25 +1478,22 @@ CheckPlayers(TeamName:team, bool:minus=false)
 	}
 	if(get_pcvar_num(g_pMinPlayers) > count)
 	{
-		if(g_iForceEndTeam != TEAM_UNASSIGNED)
+		switch(g_iForceEndTeam)
 		{
-			if(CheckTimeToForceEnd())
+			case TEAM_UNASSIGNED:
 			{
-				return true
+				StartForceEnd(team);
+			}
+			default:
+			{
+				if(CheckTimeToForceEnd())
+				{
+					return true;
+				}
 			}
 		}
-
-		if(g_iForceEndTeam == TEAM_UNASSIGNED)
-		{
-			StartForceEnd(team)
-			SendMessgeForceEnd();
-			return true;
-		}
-		else
-		{
-			SendMessgeForceEnd();
-		}
-		return true
+		SendMessgeForceEnd();
+		return true;
 	}
 	else
 	{
