@@ -3,7 +3,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.06 rev.E"
+#define VERSION "2.06 rev.F"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -187,6 +187,11 @@ public plugin_natives()
 	register_native("PugNextVote", "NextVote")
 	register_native("PugStart", "StartVoting")
 	register_native("register_pug_event", "_register_pug_event")
+	register_native("pug_get_state", "_pug_get_state")
+}
+public _pug_get_state()
+{
+	return any:pug_state
 }
 public plugin_precache()
 {
