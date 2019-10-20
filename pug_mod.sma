@@ -1070,7 +1070,7 @@ public OnMakeBomber()
 		DisableHookChain(g_MakeBomber)
 		return HC_CONTINUE
 	}
-	SetHookChainReturn(ATYPE_INTEGER, 0)
+	SetHookChainReturn(ATYPE_BOOL, false)
 	return HC_SUPERCEDE
 }
 stock get_rounds()
