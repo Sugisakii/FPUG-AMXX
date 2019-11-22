@@ -72,7 +72,9 @@ enum _:PUG_EVENTS
 	ALL_PLAYER_IS_READY, /*(void)*/
 	ROUND_START, /*(void)*/
 	ROUND_END, /*(TeamName:win_team)*/
-	PUG_END /*(TeamName:win_team, bool:draw, bool:overtime)*/
+	PUG_END, /*(TeamName:win_team, bool:draw, bool:overtime)*/
+	INTERMISSION_START, /* (void) */
+	INTERMISSION_END /* (void) */
 }
 new Array:PugHooks[PUG_EVENTS];
 new g_iDamage[33][33]
@@ -214,14 +216,14 @@ public _register_pug_event(pl, pr)
 	}
 	new func=-1;
 	switch(event)
-	{
-		case PUG_START,ALL_PLAYER_IS_READY,ROUND_START:
-		{
-			func = CreateOneForward(pl, str);
-		}
+	{	
 		case ROUND_END,PUG_END:
 		{
 			func = CreateOneForward(pl, str, FP_CELL)
+		}
+		default : 
+		{
+			func = CreateOneForward(pl, str);
 		}
 	}
 	if(func == -1)
@@ -1115,6 +1117,7 @@ public OnStartRoundPost()
 	if(is_intermission)
 	{
 		is_intermission = false
+		ExecuteEvent(INTERMISSION_END)
 		for(new i = 1 ; i<=g_iMaxPlayers ; i++)
 		{
 			if(!is_user_connected(i))
@@ -1174,6 +1177,10 @@ public StartIntermission()
 		g_iCountDown = get_pcvar_num(g_pIntermissionCountdown)
 	}
 	set_pcvar_num(g_pMaxSpeed, 0)
+	if(pug_state != ENDING)
+	{
+		ExecuteEvent(INTERMISSION_START);
+	}
 	set_task(1.0, "IntermissionCountDown", TASK_INTERMISSION, _, _, "a", g_iCountDown)
 }
 public IntermissionCountDown(task)
@@ -1538,16 +1545,15 @@ stock ExecuteEvent(event, any:...)
 	static x;
 	for(x=0 ; x<ArraySize(PugHooks[event]);x++)
 	{
-		
 		switch(event)
 		{
-			case PUG_START,ALL_PLAYER_IS_READY,ROUND_START:
-			{
-				ExecuteForward(ArrayGetCell(PugHooks[event], x), _)
-			}
 			case ROUND_END,PUG_END:
 			{
 				ExecuteForward(ArrayGetCell(PugHooks[event], x), _, getarg(1))
+			}
+			default:
+			{
+				ExecuteForward(ArrayGetCell(PugHooks[event], x), _)
 			}
 		}
 	}

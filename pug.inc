@@ -16,7 +16,9 @@ enum PUG_EVENTS
 	ALL_PLAYER_IS_READY, /*(void)*/
 	ROUND_START, /*(void)*/
 	ROUND_END, /*(TeamName:win_team)*/
-	PUG_END /*(TeamName:win_team)*/
+	PUG_END, /*(TeamName:win_team)*/
+	INTERMISSION_START, /* (void) */
+	INTERMISSION_END /* void */
 }
 /*
 * Registrar un comando
