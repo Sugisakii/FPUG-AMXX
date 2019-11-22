@@ -33,6 +33,7 @@ Al igual que el YAP, posee características muy similares o mas bien iguales, ti
 |pug_overtime_money|10000|800|16000|Dinero inicial al iniciar las rondas extra|
 |pug_minplayers|3|0|(pug_players / 2)|Define el minimo de jugadores por equipo para mantener la partida activa|
 |pug_force_end_time|3|0|~|Tiempo que tarda en chequear el numero de jugadores antes de Forzar el final|
+|pug_bombfrags|1|0|1|Agrega los clasicos 3 puntos a los jugadores que desactiven o explote la C4|
 
 ## Comandos (Say):
 - .ready: Cambias de estado a "listo"

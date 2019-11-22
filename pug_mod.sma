@@ -3,7 +3,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.06 rev.F"
+#define VERSION "2.1 rev.A"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -25,6 +25,8 @@ new Trie:g_commands
 new Trie:g_votes
 new HookChain:PreThink
 new HookChain:g_MakeBomber
+new HookChain:g_BombDefuseEnd
+new HookChain:g_BombExplode
 new bool:is_intermission = false
 new bool:overtime = false
 new WinStatus:g_tPugWin
@@ -53,6 +55,7 @@ new g_iHalfRoundNum
 new g_pVoteCount
 new g_pVoteMap
 new g_pMaxSpeed
+new g_pBombFrag
 new g_pIntermissionCountdown
 new g_pMaxRounds
 new g_pOverTime
@@ -161,6 +164,8 @@ public plugin_init()
 	RegisterHookChain(RG_RoundEnd, "OnRoundEndPre", 0)
 	RegisterHookChain(RG_HandleMenu_ChooseTeam, "OnChooseTeam")
 	RegisterHookChain(RG_CBasePlayer_AddAccount, "OnCallMoneyEvent2")
+	g_BombDefuseEnd = RegisterHookChain(RG_CGrenade_DefuseBombEnd, "OnDefuseBomb", 1)
+	g_BombExplode = RegisterHookChain(RG_CGrenade_ExplodeBomb, "OnBombExplode", 1)
 	register_forward(FM_ClientDisconnect, "OnClientDisconnected")
 	register_event("Damage", "OnDamageEvent", "b", "2!0", "3=0", "4!0")
 	register_event("DeathMsg", "OnPlayerDeath", "a")
@@ -339,6 +344,7 @@ RegisterCvars()
 	g_pOverTimeMoney				=		register_cvar("pug_overtime_money", "10000")
 	g_pMinPlayers					=		register_cvar("pug_minplayers", "3")
 	g_pForceEndTime					=		register_cvar("pug_force_end_time", "3")
+	g_pBombFrag						=		register_cvar("pug_bombfrags", "1");
 
 	Sync1 = CreateHudSyncObj()
 	Sync2 = CreateHudSyncObj()
@@ -1024,6 +1030,16 @@ public OnStartRound()
 				set_cvar_string(cvar_pug[i][NAME], cvar_pug[i][VALUE])
 			}
 			ExecuteEvent(PUG_START)
+			if(get_pcvar_num(g_pBombFrag) == 0)
+			{
+				DisableHookChain(g_BombDefuseEnd)
+				DisableHookChain(g_BombExplode)
+			}
+			else
+			{
+				EnableHookChain(g_BombDefuseEnd)
+				EnableHookChain(g_BombExplode)
+			}
 		}
 		if(is_intermission)
 		{			
@@ -1063,6 +1079,21 @@ public OnStartRound_NextFrame()
 			
 			rg_set_user_armor(i, 0, ARMOR_NONE)
 		}
+	}
+}
+public OnDefuseBomb(ent, id, bool:bDefused)
+{
+	if(bDefused)
+	{
+		set_pev(id, pev_frags, pev(id, pev_frags) - 3);
+	}
+}
+public OnBombExplode(ent)
+{
+	new id = get_entvar(ent, var_owner);
+	if(is_user_connected(id))
+	{
+		set_pev(id, pev_frags, pev(id, pev_frags) - 3 )
 	}
 }
 public OnMakeBomber()
