@@ -3,7 +3,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.1 rev.A"
+#define VERSION "2.1 rev.B"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -68,6 +68,7 @@ new g_iCurrentVote = 0
 new g_pMinPlayers
 new g_pForceEndTime
 new g_iTimeToEnd
+new Float:g_fNextPlayerThink[33]
 new TeamName:g_iForceEndTeam = TEAM_UNASSIGNED
 enum _:PUG_EVENTS
 {
@@ -979,7 +980,11 @@ public OnPlayerThink(id)
 {
 	if(pug_state == COMMENCING || is_intermission)
 	{
-		client_cmd(id, "+strafe%s", is_intermission ? ";+showscores" : "")
+		if(g_fNextPlayerThink[id] >= get_gametime())
+		{
+			client_cmd(id, "+strafe%s", is_intermission ? ";+showscores" : "")
+			g_fNextPlayerThink[id] = get_gametime() + 0.2;
+		}
 		static item
 		item = get_member(id, m_pActiveItem);
 		if(!is_nullent(item))
@@ -1050,8 +1055,6 @@ public OnStartRound()
 		set_pcvar_num(g_pMaxSpeed, 320)
 		DisableHookChain(g_MakeBomber)
 	}
-	client_cmd(0, "-strafe;-showscores")
-
 }
 public OnStartRound_NextFrame()
 {
@@ -1175,6 +1178,7 @@ public OnStartRoundPost()
 	{
 		CheckPlayers(TEAM_TERRORIST)
 	}
+	client_cmd(0, "-strafe;-showscores")
 	ExecuteEvent(ROUND_START)
 }
 public update_scoreboard()
