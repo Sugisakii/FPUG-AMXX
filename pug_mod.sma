@@ -3,7 +3,7 @@
 #include <reapi>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.1 rev.B"
+#define VERSION "2.1 rev.C"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -980,7 +980,7 @@ public OnPlayerThink(id)
 {
 	if(pug_state == COMMENCING || is_intermission)
 	{
-		if(g_fNextPlayerThink[id] >= get_gametime())
+		if(g_fNextPlayerThink[id] <= get_gametime())
 		{
 			client_cmd(id, "+strafe%s", is_intermission ? ";+showscores" : "")
 			g_fNextPlayerThink[id] = get_gametime() + 0.2;
@@ -989,8 +989,8 @@ public OnPlayerThink(id)
 		item = get_member(id, m_pActiveItem);
 		if(!is_nullent(item))
 		{
-			set_member(item, m_Weapon_flNextPrimaryAttack, 0.1)
-			set_member(item, m_Weapon_flNextSecondaryAttack, 0.1)
+			set_member(item, m_Weapon_flNextPrimaryAttack, 1.0)
+			set_member(item, m_Weapon_flNextSecondaryAttack, 1.0)
 		}
 	}
 	else
