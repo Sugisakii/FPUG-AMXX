@@ -1593,3 +1593,5 @@ stock ExecuteEvent(event, any:...)
 		}
 	}
 }
+
+/* TEST */
