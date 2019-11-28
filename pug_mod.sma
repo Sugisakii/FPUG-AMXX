@@ -1260,6 +1260,7 @@ public OnRoundEndPre(WinStatus:status, ScenarioEventEndRound:event, Float:tmDela
 	{
 		return
 	}
+	ExecuteEvent(ROUND_END, status == WINSTATUS_CTS ? TEAM_CT : TEAM_TERRORIST)
 	for(new i = 1 ; i <= g_iMaxPlayers ; i++)
 	{
 		if(is_user_alive(i))
@@ -1327,11 +1328,7 @@ public OnRoundEndPre(WinStatus:status, ScenarioEventEndRound:event, Float:tmDela
 			}
 			StartIntermission();
 			SetHookChainArg(3, ATYPE_FLOAT, float(g_iCountDown))
-		}
-		else
-		{
-			ExecuteEvent(ROUND_END, status == WINSTATUS_CTS ? TEAM_CT : TEAM_TERRORIST)
-		}
+		}	
 	}
 	set_task(0.1, "update_scoreboard")
 }
