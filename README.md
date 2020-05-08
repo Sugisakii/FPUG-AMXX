@@ -1,5 +1,5 @@
 # FPUG-AMXX
-## Descripccion:
+## Descripcion:
 El famoso Pick Up Game/Competitive, con algunas características distintas, fue tomado como base el competitivo de "Counter-Strike: Global Offensive"
 
 ## Caracteristicas:
@@ -33,7 +33,7 @@ Al igual que el YAP, posee características muy similares o mas bien iguales, ti
 |pug_overtime_money|10000|800|16000|Dinero inicial al iniciar las rondas extra|
 |pug_minplayers|3|0|(pug_players / 2)|Define el minimo de jugadores por equipo para mantener la partida activa|
 |pug_force_end_time|3|0|~|Tiempo que tarda en chequear el numero de jugadores antes de Forzar el final|
-|pug_bombfrags|1|0|1|Agrega los clasicos 3 puntos a los jugadores que desactiven o explote la C4|
+|pug_bombfrags|1|0|1|Agrega los clasicos 3 puntos a los jugadores que desactiven o explote la C4<br>`1` Agrega los puntos<br>`2` No los agrega|
 
 ## Comandos (Say):
 - .ready: Cambias de estado a "listo"
