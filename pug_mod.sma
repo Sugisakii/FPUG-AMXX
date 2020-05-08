@@ -1,9 +1,10 @@
 #include <amxmodx>
 #include <fakemeta>
 #include <reapi>
+#include <fun>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.1 rev.C"
+#define VERSION "2.11 rev.A"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -27,6 +28,7 @@ new HookChain:PreThink
 new HookChain:g_MakeBomber
 new HookChain:g_BombDefuseEnd
 new HookChain:g_BombExplode
+new HookChain:g_PlantBomb
 new bool:is_intermission = false
 new bool:overtime = false
 new WinStatus:g_tPugWin
@@ -46,6 +48,7 @@ enum _:REGISTER_COMMANDS
 	PUG_STATE:CMD_STATE
 }
 
+new g_iPlanter;
 new g_iMapType
 new g_iLegacyChat
 new g_iMaxPlayers
@@ -167,6 +170,7 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_AddAccount, "OnCallMoneyEvent2")
 	g_BombDefuseEnd = RegisterHookChain(RG_CGrenade_DefuseBombEnd, "OnDefuseBomb", 1)
 	g_BombExplode = RegisterHookChain(RG_CGrenade_ExplodeBomb, "OnBombExplode", 1)
+	g_PlantBomb = RegisterHookChain(RG_PlantBomb, "OnPlantBomb", 1)
 	register_forward(FM_ClientDisconnect, "OnClientDisconnected")
 	register_event("Damage", "OnDamageEvent", "b", "2!0", "3=0", "4!0")
 	register_event("DeathMsg", "OnPlayerDeath", "a")
@@ -196,6 +200,7 @@ public plugin_natives()
 	register_native("PugStart", "StartVoting")
 	register_native("register_pug_event", "_register_pug_event")
 	register_native("pug_get_state", "_pug_get_state")
+	register_native("PugPrintChat", "_native_print_chat")
 }
 public _pug_get_state()
 {
@@ -204,6 +209,13 @@ public _pug_get_state()
 public plugin_precache()
 {
 	precache_sound(SND_COUNTER_BEEP)
+}
+public _native_print_chat()
+{
+	new id = get_param(1)
+	new msg[256]
+	vdformat(msg, charsmax(msg), 2, 3)
+	client_print(id, print_chat, "[%s] %s", PLUGIN, msg)
 }
 public _register_pug_event(pl, pr)
 {
@@ -488,7 +500,12 @@ public OnSay(id)
 			}
 			else if(get_user_flags(id) & array[CMD_FLAGS] || array[CMD_FLAGS] == -1)
 			{
-				ExecuteForward(array[CMD_FWD], _, id, said)
+				new ret
+				ExecuteForward(array[CMD_FWD], ret, id, said)
+				if(ret == PLUGIN_HANDLED)
+				{
+					client_print(id, print_chat, "[%s] No se puede ejecutar el comando en este momento", PLUGIN)		
+				}
 			}
 			else
 			{
@@ -1035,15 +1052,17 @@ public OnStartRound()
 				set_cvar_string(cvar_pug[i][NAME], cvar_pug[i][VALUE])
 			}
 			ExecuteEvent(PUG_START)
-			if(get_pcvar_num(g_pBombFrag) == 0)
+			if(get_pcvar_num(g_pBombFrag) == 1)
 			{
 				DisableHookChain(g_BombDefuseEnd)
 				DisableHookChain(g_BombExplode)
+				DisableHookChain(g_PlantBomb)
 			}
 			else
 			{
 				EnableHookChain(g_BombDefuseEnd)
 				EnableHookChain(g_BombExplode)
+				EnableHookChain(g_PlantBomb)
 			}
 		}
 		if(is_intermission)
@@ -1088,15 +1107,18 @@ public OnDefuseBomb(ent, id, bool:bDefused)
 {
 	if(bDefused)
 	{
-		set_pev(id, pev_frags, pev(id, pev_frags) - 3);
+		set_user_frags(id, get_user_frags(id) - 3);
 	}
+}
+public OnPlantBomb(id)
+{
+	g_iPlanter = id
 }
 public OnBombExplode(ent)
 {
-	new id = get_entvar(ent, var_owner);
-	if(is_user_connected(id))
+	if(is_user_connected(g_iPlanter))
 	{
-		set_pev(id, pev_frags, pev(id, pev_frags) - 3 )
+		set_user_frags(g_iPlanter, get_user_frags(g_iPlanter) - 3);
 	}
 }
 public OnMakeBomber()
@@ -1555,6 +1577,10 @@ StartForceEnd(TeamName:team)
 }
 public OnClientDisconnected(id)
 {
+	if(id == g_iPlanter)
+	{
+		g_iPlanter = 0;
+	}
 	if(pug_state == ALIVE && g_iForceEndTeam == TEAM_UNASSIGNED)
 	{
 		CheckPlayers(get_member(id, m_iTeam), true)
