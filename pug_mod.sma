@@ -4,7 +4,7 @@
 #include <fun>
 
 #define PLUGIN  "Pug Mod"
-#define VERSION "2.11 rev.A"
+#define VERSION "2.11 rev.B"
 #define AUTHOR  "Sugisaki"
 
 #define SND_COUNTER_BEEP "UI/buttonrollover.wav"
@@ -45,7 +45,7 @@ enum _:REGISTER_COMMANDS
 {
 	CMD_FWD,
 	CMD_FLAGS,
-	PUG_STATE:CMD_STATE
+	CMD_STATE
 }
 
 new g_iPlanter;
@@ -156,7 +156,12 @@ enum PUG_STATE
 	ALIVE,
 	ENDING
 }
-native PugRegisterCommand(name[], fwd[], flags = -1, PUG_STATE:pugstate = NO_ALIVE);
+const PUG_STATE_FLAG:FLAG_NO_ALIVE = any:(1<<any:NO_ALIVE)
+const PUG_STATE_FLAG:FLAG_VOTING = any:(1<<any:VOTING)
+const PUG_STATE_FLAG:FLAG_COMMENCING = any:(1<<any:COMMENCING)
+const PUG_STATE_FLAG:FLAG_ALIVE = any:(1<<any:ALIVE)
+const PUG_STATE_FLAG:FLAG_ENDING = any:(1<<any:ENDING)
+native PugRegisterCommand(name[], fwd[], flags = -1, PUG_STATE_FLAG:stateflag = FLAG_NO_ALIVE);
 new PUG_STATE:pug_state = NO_ALIVE
 public plugin_init()
 {
@@ -183,9 +188,9 @@ public plugin_init()
 	PugRegisterCommand("unready", "OnUnReady")
 	PugRegisterCommand("nolisto", "OnUnReady")
 	PugRegisterCommand("start", "OnForceStart", ADMIN_BAN)
-	PugRegisterCommand("cancel", "OnForceCancel", ADMIN_BAN, ALIVE)
+	PugRegisterCommand("cancel", "OnForceCancel", ADMIN_BAN, FLAG_ALIVE)
 	PugRegisterCommand("forceready", "OnForceReady", ADMIN_BAN)
-	PugRegisterCommand("dmg", "OnDmg", -1, ALIVE)
+	PugRegisterCommand("dmg", "OnDmg", -1, FLAG_ALIVE)
 }
 public plugin_natives()
 {
@@ -494,7 +499,7 @@ public OnSay(id)
 		static array[REGISTER_COMMANDS]
 		if(TrieGetArray(g_commands, name, array, sizeof(array)))
 		{
-			if(array[CMD_STATE] != pug_state)
+			if(!(array[CMD_STATE] & (1<<any:pug_state)))
 			{
 				client_print(id, print_chat, "[%s] No se puede ejecutar el comando en este momento", PLUGIN)
 			}

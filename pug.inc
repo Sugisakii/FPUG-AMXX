@@ -10,6 +10,13 @@ enum PUG_STATE
 	ALIVE,
 	ENDING
 }
+
+const PUG_STATE_FLAG:FLAG_NO_ALIVE = any:(1<<any:NO_ALIVE)
+const PUG_STATE_FLAG:FLAG_VOTING = any:(1<<any:VOTING)
+const PUG_STATE_FLAG:FLAG_COMMENCING = any:(1<<any:COMMENCING)
+const PUG_STATE_FLAG:FLAG_ALIVE = any:(1<<any:ALIVE)
+const PUG_STATE_FLAG:FLAG_ENDING = any:(1<<any:ENDING)
+
 enum PUG_EVENTS
 {
 	PUG_START = 0, /*(void)*/
@@ -32,7 +39,7 @@ enum PUG_EVENTS
 *				argument[type = string]: String adicional a pasar
 *
 */
-native PugRegisterCommand(name[], fwd[], flags = -1, PUG_STATE:pugstate = NO_ALIVE);
+native PugRegisterCommand(name[], fwd[], flags = -1, PUG_STATE_FLAG:stateflag = FLAG_NO_ALIVE);
 native PugNextVote();
 native PugRegisterVote(name[], function[]);
 native PugRegisterVoteOption(option[]);
