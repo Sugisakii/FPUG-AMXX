@@ -39,3 +39,4 @@ native PugRegisterVoteOption(option[]);
 native PugStart();
 native register_pug_event(PUG_EVENTS:event, const function[]);
 native PUG_STATE:pug_get_state()
+native PugPrintChat(player, const msg[], any:...);
